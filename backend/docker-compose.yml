@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: agro_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agro_platform_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  pgdata:
