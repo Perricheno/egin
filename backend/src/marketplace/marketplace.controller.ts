@@ -19,8 +19,9 @@ export class MarketplaceController {
 
   @Get()
   @ApiOperation({ summary: 'Get all listings' })
-  findAll() {
-    return this.marketplaceService.findAll();
+  async findAll() {
+    const data = await this.marketplaceService.findAll();
+    return { success: true, data };
   }
 
   @Get(':id')

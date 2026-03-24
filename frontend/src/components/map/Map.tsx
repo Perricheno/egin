@@ -14,12 +14,14 @@ import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import { mapboxGlDrawTheme } from "./draw-theme";
 import { PlatformLanguage, ui } from "@/lib/i18n";
 import { lineString, length as turfLength, midpoint as turfMidpoint } from "@turf/turf";
+import { KZ_BOUNDS, KZ_CENTER, KZ_ZOOM } from "@/lib/kz-regions";
 
 type BaseMapMode = "simple" | "satellite";
 
 interface MapProps {
   onGeometrySelected?: (geom: any) => void;
   drawModeActive?: boolean;
+  rulerModeActive?: boolean;
   language: PlatformLanguage;
   showMeasurements: boolean;
 }
@@ -27,15 +29,17 @@ interface MapProps {
 export interface MapRef {
   refreshPlots: () => void;
   focusCurrentLocation: () => void;
+  flyToRegion: (center: [number, number], zoom: number) => void;
 }
 
 const OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 
 const Map = forwardRef<MapRef, MapProps>(
-  ({ onGeometrySelected, drawModeActive, language, showMeasurements }, ref) => {
+  ({ onGeometrySelected, drawModeActive, rulerModeActive, language, showMeasurements }, ref) => {
     const mapContainer = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const drawRef = useRef<MapboxDraw | null>(null);
+    const markerRef = useRef<maplibregl.Marker | null>(null);
     const onGeometrySelectedRef = useRef(onGeometrySelected);
     const languageRef = useRef<PlatformLanguage>(language);
     const [baseMapMode, setBaseMapMode] = useState<BaseMapMode>("simple");
@@ -115,29 +119,30 @@ const Map = forwardRef<MapRef, MapProps>(
       const feature = data.features[data.features.length - 1];
       const labels: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
-      if (
-        feature?.geometry?.type === "Polygon" &&
-        Array.isArray(feature.geometry.coordinates?.[0])
-      ) {
-        const ring = feature.geometry.coordinates[0];
+      const type = feature?.geometry?.type;
+      if (type === "Polygon" || type === "LineString") {
+        const coords = (feature.geometry as any).coordinates;
+        const ring = type === "Polygon" ? coords[0] : coords;
 
-        for (let index = 0; index < ring.length - 1; index += 1) {
-          const start = ring[index];
-          const end = ring[index + 1];
+        if (Array.isArray(ring)) {
+          for (let index = 0; index < ring.length - 1; index += 1) {
+            const start = ring[index];
+            const end = ring[index + 1];
 
-          if (!Array.isArray(start) || !Array.isArray(end)) continue;
+            if (!Array.isArray(start) || !Array.isArray(end)) continue;
 
-          const segment = lineString([start, end]);
-          const mid = turfMidpoint(start, end);
-          const kilometers = turfLength(segment, { units: "kilometers" });
+            const segment = lineString([start, end]);
+            const mid = turfMidpoint(start, end);
+            const kilometers = turfLength(segment, { units: "kilometers" });
 
-          labels.push({
-            type: "Feature",
-            geometry: mid.geometry,
-            properties: {
-              label: formatDistance(kilometers),
-            },
-          });
+            labels.push({
+              type: "Feature",
+              geometry: mid.geometry,
+              properties: {
+                label: formatDistance(kilometers),
+              },
+            });
+          }
         }
       }
 
@@ -284,7 +289,7 @@ const Map = forwardRef<MapRef, MapProps>(
 
     const fetchPlots = async (map: maplibregl.Map) => {
       try {
-        const response = await fetch("http://localhost:3000/farm-plots");
+        const response = await fetch("http://localhost:3008/farm-plots");
 
         if (!response.ok) return;
 
@@ -341,16 +346,47 @@ const Map = forwardRef<MapRef, MapProps>(
             "fill-color": [
               "match",
               ["get", "cropType"],
-              "Арбуз",
-              "#2F6B3D",
-              "Картофель",
-              "#C6A85E",
-              "Пшеница",
-              "#A7B84B",
+              "Арбуз", "#2F6B3D",
+              "Қарбыз", "#2F6B3D",
+              "Watermelon", "#2F6B3D",
+              "Картофель", "#C6A85E",
+              "Картоп", "#C6A85E",
+              "Potato", "#C6A85E",
+              "Пшеница", "#A7B84B",
+              "Бидай", "#A7B84B",
+              "Wheat", "#A7B84B",
+              "Кукуруза", "#D4A017",
+              "Corn", "#D4A017",
+              "Помидоры", "#C0392B",
+              "Tomato", "#C0392B",
+              "Лук", "#8E44AD",
+              "Onion", "#8E44AD",
+              "Морковь", "#E67E22",
+              "Carrot", "#E67E22",
+              "Подсолнечник", "#F1C40F",
+              "Sunflower", "#F1C40F",
+              "Рис", "#1ABC9C",
+              "Rice", "#1ABC9C",
+              "Ячмень", "#27AE60",
+              "Barley", "#27AE60",
+              "Хлопок", "#BDC3C7",
+              "Cotton", "#BDC3C7",
+              "Свёкла", "#9B59B6",
+              "Beet", "#9B59B6",
               "#888",
             ],
-            "fill-opacity": 0.35,
-            "fill-outline-color": "#244F2E",
+            "fill-opacity": 0.4,
+          },
+        });
+
+        map.addLayer({
+          id: "farm-plots-outline",
+          type: "line",
+          source: "farm-plots",
+          paint: {
+            "line-color": "#244F2E",
+            "line-width": 2.5,
+            "line-opacity": 0.8,
           },
         });
 
@@ -413,6 +449,9 @@ const Map = forwardRef<MapRef, MapProps>(
         }
       },
       focusCurrentLocation,
+      flyToRegion: (center: [number, number], zoom: number) => {
+        mapRef.current?.flyTo({ center, zoom, essential: true, duration: 1500 });
+      },
     }));
 
     useEffect(() => {
@@ -422,8 +461,9 @@ const Map = forwardRef<MapRef, MapProps>(
       const map = new maplibregl.Map({
         container: mapContainer.current,
         style: OPENFREEMAP_STYLE,
-        center: [76.8512, 43.222],
-        zoom: 10,
+        center: KZ_CENTER,
+        zoom: KZ_ZOOM,
+        maxBounds: KZ_BOUNDS,
       });
 
       mapRef.current = map;
@@ -512,13 +552,15 @@ const Map = forwardRef<MapRef, MapProps>(
 
       map.on("draw.create", () => {
         const data = draw.getAll();
-        if (data.features.length > 0 && onGeometrySelectedRef.current) {
+        if (data.features.length > 0) {
           updateMeasurementLabels();
-          onGeometrySelectedRef.current(
-            data.features[data.features.length - 1].geometry,
-          );
-          draw.deleteAll();
-          updateMeasurementLabels();
+          if (!rulerModeActive && onGeometrySelectedRef.current) {
+            onGeometrySelectedRef.current(
+              data.features[data.features.length - 1].geometry,
+            );
+            draw.deleteAll();
+            updateMeasurementLabels();
+          }
         }
       });
 
@@ -564,22 +606,76 @@ const Map = forwardRef<MapRef, MapProps>(
         canvas.style.cursor = drawModeActive ? "crosshair" : "";
       }
 
-      if (drawRef.current && drawModeActive) {
-        drawRef.current.changeMode("draw_polygon");
-      } else {
-        updateMeasurementLabels();
+      if (drawRef.current) {
+        if (drawModeActive) {
+          drawRef.current.changeMode("draw_polygon");
+        } else if (!rulerModeActive) {
+          drawRef.current.changeMode("simple_select");
+          drawRef.current.deleteAll();
+          updateMeasurementLabels();
+        }
       }
     }, [drawModeActive]);
+
+    useEffect(() => {
+        const canvas = mapRef.current?.getCanvas();
+        if (canvas) {
+          canvas.style.cursor = rulerModeActive ? "crosshair" : "";
+        }
+  
+        if (drawRef.current) {
+          if (rulerModeActive) {
+            drawRef.current.changeMode("draw_line_string");
+          } else if (!drawModeActive) {
+            drawRef.current.changeMode("simple_select");
+            drawRef.current.deleteAll();
+            updateMeasurementLabels();
+          }
+        }
+      }, [rulerModeActive]);
+
+    useEffect(() => {
+        let watchId: number;
+        if (navigator.geolocation && mapRef.current) {
+          watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+              const { longitude, latitude } = pos.coords;
+              if (!mapRef.current) return;
+              
+              if (!markerRef.current) {
+                const el = document.createElement('div');
+                el.className = 'user-location-marker';
+                el.innerHTML = `
+                  <div style="background: #2F6B3D; border: 3px solid white; width: 20px; height: 20px; border-radius: 50%; box-shadow: 0 0 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-size: 10px;">
+                    👤
+                  </div>
+                `;
+                markerRef.current = new maplibregl.Marker(el)
+                  .setLngLat([longitude, latitude])
+                  .addTo(mapRef.current);
+              } else {
+                markerRef.current.setLngLat([longitude, latitude]);
+              }
+            },
+            (err) => console.warn(err),
+            { enableHighAccuracy: true }
+          );
+        }
+        return () => {
+          if (watchId) navigator.geolocation.clearWatch(watchId);
+          if (markerRef.current) markerRef.current.remove();
+        };
+    }, []);
 
     return (
       <div className="relative h-full w-full">
         <div ref={mapContainer} className="h-full w-full" />
 
-        <div className="absolute bottom-32 left-6 z-20">
+        <div className="absolute bottom-40 left-6 z-20">
           <button
             type="button"
             onClick={() => setIsLayersOpen((open) => !open)}
-            className="flex w-32 flex-col overflow-hidden rounded-[1.5rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md"
+            className="flex w-32 flex-col overflow-hidden rounded-[1.5rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md border border-white/20 transition-all active:scale-95"
             aria-label={t.layers}
           >
             <div

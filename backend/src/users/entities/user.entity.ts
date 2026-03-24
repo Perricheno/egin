@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 
 export enum UserRole {
   FARMER = 'farmer',
+  SELLER = 'seller',
   BUYER = 'buyer',
   ADMIN = 'admin',
 }

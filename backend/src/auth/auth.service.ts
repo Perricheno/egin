@@ -34,7 +34,10 @@ export class AuthService {
       user: {
         id: user.id,
         fullName: user.fullName,
-        role: user.role
+        phone: user.phone,
+        role: user.role,
+        region: user.region,
+        district: user.district,
       }
     };
   }
@@ -49,7 +52,10 @@ export class AuthService {
       user: {
         id: newUser.id,
         fullName: newUser.fullName,
-        role: newUser.role
+        phone: newUser.phone,
+        role: newUser.role,
+        region: newUser.region,
+        district: newUser.district,
       }
     };
   }
