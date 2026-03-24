@@ -11,19 +11,85 @@ export class FarmPlotsService {
     private readonly plotRepository: Repository<FarmPlot>,
   ) {}
 
+  private normalizeGeometry(rawGeometry: unknown) {
+    const geometry =
+      typeof rawGeometry === 'string' ? JSON.parse(rawGeometry) : rawGeometry;
+
+    if (!geometry || typeof geometry !== 'object') {
+      throw new Error('Geometry is missing or invalid');
+    }
+
+    const polygon = geometry as { type?: string; coordinates?: unknown };
+
+    if (polygon.type !== 'Polygon' || !Array.isArray(polygon.coordinates)) {
+      throw new Error('Only Polygon GeoJSON is supported');
+    }
+
+    const normalizedCoordinates = polygon.coordinates.map((ring) => {
+      if (!Array.isArray(ring) || ring.length < 4) {
+        throw new Error('Polygon ring must contain at least 4 points');
+      }
+
+      const normalizedRing = ring.map((point) => {
+        if (
+          !Array.isArray(point) ||
+          point.length < 2 ||
+          typeof point[0] !== 'number' ||
+          typeof point[1] !== 'number'
+        ) {
+          throw new Error('Polygon point is invalid');
+        }
+
+        return [point[0], point[1]];
+      });
+
+      const firstPoint = normalizedRing[0];
+      const lastPoint = normalizedRing[normalizedRing.length - 1];
+
+      if (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]) {
+        normalizedRing.push([...firstPoint]);
+      }
+
+      return normalizedRing;
+    });
+
+    return {
+      type: 'Polygon',
+      coordinates: normalizedCoordinates,
+    };
+  }
+
   async create(userId: string, dto: CreateFarmPlotDto): Promise<any> {
     try {
+      const normalizedGeometry = this.normalizeGeometry(dto.geometry);
+
       const plot = this.plotRepository.create({
         ...dto,
         userId,
-        // PostGIS expects a valid GeoJSON syntax when geometry is saved
-        geometry: typeof dto.geometry === 'string' ? JSON.parse(dto.geometry) : dto.geometry
+        geometry: null,
       });
 
-      const savedPlot = await this.plotRepository.save(plot);
+      const createdPlot = await this.plotRepository.save(plot);
+
+      await this.plotRepository.query(
+        `
+          UPDATE farm_plots
+          SET geometry = ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)
+          WHERE id = $2
+        `,
+        [JSON.stringify(normalizedGeometry), createdPlot.id],
+      );
+
+      const savedPlot = await this.plotRepository.findOneByOrFail({
+        id: createdPlot.id,
+      });
 
       // Now we run Risk analysis for this new plot
-      const riskAnalysis = await this.calculateRisk(dto.cropType, dto.seasonYear, savedPlot.geometry);
+      const riskAnalysis = await this.calculateRisk(
+        dto.cropType,
+        dto.seasonYear,
+        normalizedGeometry,
+      );
 
       return {
         plot: savedPlot,

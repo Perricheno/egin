@@ -21,6 +21,14 @@ const Map = forwardRef<MapRef, MapProps>(({ onGeometrySelected, drawModeActive }
   const mapRef = useRef<maplibregl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
 
+  const handleZoomIn = () => {
+    mapRef.current?.zoomIn();
+  };
+
+  const handleZoomOut = () => {
+    mapRef.current?.zoomOut();
+  };
+
   const fetchPlots = async (map: maplibregl.Map) => {
     try {
       const response = await fetch('http://localhost:3000/farm-plots');
@@ -175,7 +183,31 @@ const Map = forwardRef<MapRef, MapProps>(({ onGeometrySelected, drawModeActive }
   }, [drawModeActive]);
 
   return (
-    <div ref={mapContainer} className="w-full h-full" />
+    <div className="relative h-full w-full">
+      <div ref={mapContainer} className="h-full w-full" />
+
+      <div className="absolute right-6 top-24 z-20 overflow-hidden rounded-[1.5rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.15)] backdrop-blur-md">
+        <button
+          type="button"
+          onClick={handleZoomIn}
+          className="flex h-16 w-16 items-center justify-center text-4xl font-light text-[#3F3F46] transition-colors hover:bg-black/5 active:bg-black/10"
+          aria-label="Приблизить карту"
+        >
+          +
+        </button>
+
+        <div className="mx-3 h-px bg-black/10" />
+
+        <button
+          type="button"
+          onClick={handleZoomOut}
+          className="flex h-16 w-16 items-center justify-center text-4xl font-light text-[#3F3F46] transition-colors hover:bg-black/5 active:bg-black/10"
+          aria-label="Отдалить карту"
+        >
+          -
+        </button>
+      </div>
+    </div>
   );
 });
 
