@@ -4,14 +4,16 @@ import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { User, Settings, LogOut, ChevronRight, Map as MapIcon, ShieldCheck } from "lucide-react";
+import { PlatformLanguage, ui } from "@/lib/i18n";
 
-export default function ProfileView() {
+export default function ProfileView({ language }: { language: PlatformLanguage }) {
+  const t = ui[language];
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [profile, setProfile] = useState({
     name: "Иван Петров",
     phone: "+7 701 000 0000",
-    role: "Производитель (Фермер)",
+    role: t.farmerRole,
   });
 
   useEffect(() => {
@@ -24,6 +26,10 @@ export default function ProfileView() {
       if (savedAvatar) setAvatar(savedAvatar);
     }
   }, []);
+
+  useEffect(() => {
+    setProfile((prev) => ({ ...prev, role: t.farmerRole }));
+  }, [t.farmerRole]);
 
   const handleLogout = () => {
     localStorage.removeItem("agro_token");
@@ -40,7 +46,7 @@ export default function ProfileView() {
         const base64 = reader.result as string;
         setAvatar(base64);
         localStorage.setItem("agro_avatar", base64);
-        alert("Аватар успешно обновлен!");
+        alert(t.avatarUpdated);
       };
       reader.readAsDataURL(file);
     }
@@ -51,7 +57,7 @@ export default function ProfileView() {
   };
 
   const handleNotImplemented = (feature: string) => {
-    alert(`Раздел "${feature}" находится в разработке и будет доступен в ближайшем обновлении!`);
+    alert(t.featureInDev.replace("{feature}", feature));
   };
 
   if (!isLoggedIn) {
@@ -60,15 +66,15 @@ export default function ProfileView() {
         <div className="h-24 w-24 bg-white rounded-[2.5rem] flex items-center justify-center mb-6 shadow-2xl shadow-green-900/10 scale-110">
           <User className="size-12 text-[#2F6B3D] opacity-20" />
         </div>
-        <h2 className="text-3xl font-black text-[#2F6B3D] mb-3 tracking-tighter">Необходим вход</h2>
+        <h2 className="text-3xl font-black text-[#2F6B3D] mb-3 tracking-tighter">{t.profileRequired}</h2>
         <p className="text-[#2F6B3D]/60 text-sm mb-10 px-6 font-medium leading-relaxed">
-          Авторизуйтесь, чтобы управлять своим профилем, следить за территорией и сделками.
+          {t.loginToManage}
         </p>
         <Button 
           onClick={() => window.location.reload()}
           className="w-full h-16 rounded-[1.5rem] bg-[#2F6B3D] text-white font-black text-lg shadow-xl shadow-green-900/40 active:scale-95 transition-all"
         >
-          Войти в AgriPlan
+          {t.loginToAgriPlan}
         </Button>
       </div>
     );
@@ -77,11 +83,11 @@ export default function ProfileView() {
   return (
     <div className="absolute inset-0 z-10 bg-[#EAF3E7] pt-8 px-6 pb-32 overflow-y-auto w-full h-full animate-in fade-in slide-in-from-bottom-4 duration-500 pointer-events-auto">
       <div className="flex justify-between items-center mb-10 mt-2">
-        <h1 className="text-4xl font-black text-[#2F6B3D] tracking-tighter">Профиль</h1>
+        <h1 className="text-4xl font-black text-[#2F6B3D] tracking-tighter">{t.profile}</h1>
         <Button 
           variant="ghost" 
           size="icon" 
-          onClick={() => handleNotImplemented("Настройки")}
+          onClick={() => handleNotImplemented(t.settings)}
           className="text-[#2F6B3D] hover:bg-white/60 bg-white/30 backdrop-blur-md rounded-2xl h-12 w-12 shadow-sm cursor-pointer active:scale-90 transition-all"
         >
           <Settings className="size-6" />
@@ -98,11 +104,11 @@ export default function ProfileView() {
           ) : (
             <div className="flex flex-col items-center justify-center text-[#2F6B3D]/40">
               <User className="size-12 mb-1" />
-              <span className="text-[10px] font-black uppercase opacity-60">Загрузить</span>
+              <span className="text-[10px] font-black uppercase opacity-60">{t.upload}</span>
             </div>
           )}
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-black uppercase">
-            Изменить
+            {t.change}
           </div>
           <input 
             id="avatar-input" 
@@ -124,7 +130,7 @@ export default function ProfileView() {
 
       <div className="space-y-4">
         <Card 
-          onClick={() => handleNotImplemented("Мои территории")}
+          onClick={() => handleNotImplemented(t.myPlots)}
           className="border-none shadow-xl shadow-green-900/5 rounded-[2rem] bg-white/80 backdrop-blur-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer overflow-hidden group"
         >
           <CardContent className="p-6 flex items-center justify-between">
@@ -133,8 +139,8 @@ export default function ProfileView() {
                 <MapIcon className="size-6" />
               </div>
               <div className="flex flex-col">
-                <span className="font-black text-[#2F6B3D] text-lg leading-tight uppercase tracking-tight">Мои участки</span>
-                <span className="text-[10px] font-bold text-[#2F6B3D]/40 uppercase">1 активная территория</span>
+                <span className="font-black text-[#2F6B3D] text-lg leading-tight uppercase tracking-tight">{t.myPlots}</span>
+                <span className="text-[10px] font-bold text-[#2F6B3D]/40 uppercase">{t.activeTerritory}</span>
               </div>
             </div>
             <ChevronRight className="size-6 text-[#2F6B3D]/20 group-hover:text-[#2F6B3D] transition-colors" />
@@ -142,7 +148,7 @@ export default function ProfileView() {
         </Card>
         
         <Card 
-          onClick={() => handleNotImplemented("История сделок")}
+          onClick={() => handleNotImplemented(t.dealsHistory)}
           className="border-none shadow-xl shadow-green-900/5 rounded-[2rem] bg-white/80 backdrop-blur-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer overflow-hidden group"
         >
           <CardContent className="p-6 flex items-center justify-between">
@@ -151,8 +157,8 @@ export default function ProfileView() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               </div>
               <div className="flex flex-col">
-                <span className="font-black text-[#2F6B3D] text-lg leading-tight uppercase tracking-tight">История сделок</span>
-                <span className="text-[10px] font-bold text-[#2F6B3D]/40 uppercase text-amber-600/60">5 завершенных операций</span>
+                <span className="font-black text-[#2F6B3D] text-lg leading-tight uppercase tracking-tight">{t.dealsHistory}</span>
+                <span className="text-[10px] font-bold text-[#2F6B3D]/40 uppercase text-amber-600/60">{t.completedDeals}</span>
               </div>
             </div>
             <ChevronRight className="size-6 text-[#2F6B3D]/20 group-hover:text-[#2F6B3D] transition-colors" />
@@ -167,7 +173,7 @@ export default function ProfileView() {
           className="w-full h-18 rounded-[1.5rem] border-red-500/20 text-red-500 bg-red-500/5 hover:bg-red-500/10 hover:border-red-500 flex items-center gap-4 font-black text-base uppercase tracking-widest cursor-pointer active:scale-95 transition-all shadow-lg shadow-red-500/5"
         >
           <LogOut className="size-5 stroke-[3px]" />
-          Выйти
+          {t.logout}
         </Button>
       </div>
     </div>

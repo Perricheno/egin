@@ -1,5 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
+import { PlatformLanguage, ui } from "@/lib/i18n";
 
 interface ActionModalProps {
   isOpen: boolean;
@@ -8,6 +9,7 @@ interface ActionModalProps {
   children: React.ReactNode;
   primaryActionText: string;
   onPrimaryAction: () => void;
+  language: PlatformLanguage;
 }
 
 export default function ActionModal({
@@ -17,7 +19,9 @@ export default function ActionModal({
   children,
   primaryActionText,
   onPrimaryAction,
+  language,
 }: ActionModalProps) {
+  const t = ui[language];
   if (!isOpen) return null;
 
   return (
@@ -42,7 +46,7 @@ export default function ActionModal({
             className="flex-1 rounded-xl h-12" 
             onClick={onClose}
           >
-            Отмена
+            {t.cancel}
           </Button>
           <Button 
             className="flex-1 rounded-xl h-12 text-white" 

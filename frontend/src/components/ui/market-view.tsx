@@ -4,11 +4,13 @@ import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Search, Filter, ShoppingBasket } from "lucide-react";
+import { PlatformLanguage, ui } from "@/lib/i18n";
 
-export default function MarketView() {
+export default function MarketView({ language }: { language: PlatformLanguage }) {
+  const t = ui[language];
   const [listings, setListings] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("Все");
+  const [activeCategory, setActiveCategory] = useState<string>(t.all);
 
   const fetchMarketData = async () => {
     try {
@@ -18,9 +20,9 @@ export default function MarketView() {
         setListings(json.data.map((item: any) => ({
           ...item,
           // Map backend fields to UI fields if needed
-          crop: item.cropName || item.crop || "Культура",
-          volume: item.quantity || item.volume || "Не указан",
-          price: item.price ? `${item.price} ₸/т` : "Договорная"
+          crop: item.cropName || item.crop || t.culture,
+          volume: item.quantity || item.volume || t.notSpecified,
+          price: item.price ? `${item.price} ₸/т` : t.negotiable
         })));
       } else {
         setListings([
@@ -42,17 +44,21 @@ export default function MarketView() {
     fetchMarketData();
   }, []);
 
+  useEffect(() => {
+    setActiveCategory(t.all);
+  }, [t.all]);
+
   const filteredListings = listings.filter(item => {
     const matchesSearch = item.crop.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           item.region.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = activeCategory === "Все" || item.category === activeCategory;
+    const matchesCategory = activeCategory === t.all || item.category === activeCategory;
     return matchesSearch && matchesCategory;
   });
 
   return (
     <div className="absolute inset-0 z-10 bg-[#EAF3E7] pt-8 px-6 pb-32 overflow-y-auto w-full h-full animate-in fade-in slide-in-from-bottom-4 duration-300 pointer-events-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-black text-[#2F6B3D]">Агро Маркет</h1>
+        <h1 className="text-3xl font-black text-[#2F6B3D]">{t.agroMarket}</h1>
         <Button variant="outline" size="icon" className="rounded-2xl h-12 w-12 border-none bg-white shadow-sm text-[#2F6B3D] cursor-pointer hover:bg-white/90">
           <Filter className="size-5" />
         </Button>
@@ -62,7 +68,7 @@ export default function MarketView() {
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground size-5" />
         <input 
           type="text" 
-          placeholder="Поиск культур или регионов..." 
+          placeholder={t.searchPlaceholder} 
           className="w-full h-15 bg-white rounded-2xl pl-12 pr-4 shadow-xl shadow-green-900/5 border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/20 transition-all text-sm font-medium"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -70,7 +76,7 @@ export default function MarketView() {
       </div>
 
       <div className="flex gap-3 mb-6 overflow-x-auto pb-2 scrollbar-hide">
-        {["Все", "Овощи", "Фрукты", "Зерновые"].map(cat => (
+        {[t.all, t.vegetables, t.fruits, t.grains].map(cat => (
           <button 
             key={cat} 
             onClick={() => setActiveCategory(cat)}
@@ -93,7 +99,7 @@ export default function MarketView() {
                   <h3 className="font-extrabold text-[#2F6B3D] text-lg leading-none">{item.crop}</h3>
                   <span className="font-black text-[#C6A85E] text-sm whitespace-nowrap">{item.price}</span>
                 </div>
-                <p className="text-muted-foreground text-xs font-bold mt-1 mb-2">Объем: {item.volume}</p>
+                <p className="text-muted-foreground text-xs font-bold mt-1 mb-2">{t.volume}: {item.volume}</p>
                 <div className="flex items-center gap-1.5 text-muted-foreground/80 mt-auto">
                   <UserIcon className="size-3.5" />
                   <span className="text-[10px] uppercase font-heavy tracking-tighter truncate">{item.farmer} • {item.region}</span>
@@ -104,7 +110,7 @@ export default function MarketView() {
         )) : (
           <div className="text-center py-20 opacity-30 select-none">
             <ShoppingBasket className="size-16 mx-auto mb-4" />
-            <p className="font-bold">Ничего не найдено</p>
+            <p className="font-bold">{t.nothingFound}</p>
           </div>
         )}
       </div>
@@ -112,7 +118,7 @@ export default function MarketView() {
       {/* Floating Add Listing Button */}
       <div className="fixed bottom-28 right-6 z-30">
         <Button 
-          onClick={() => alert("Функция 'Добавить объявление' будет доступна в следующем обновлении!")}
+          onClick={() => alert(t.addListingSoon)}
           className="size-16 rounded-[1.5rem] bg-[#2F6B3D] text-white shadow-2xl shadow-green-900/40 hover:scale-110 transition-transform flex items-center justify-center cursor-pointer"
         >
           <ShoppingBasket className="size-7" />

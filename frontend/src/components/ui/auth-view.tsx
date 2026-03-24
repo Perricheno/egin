@@ -5,12 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PlatformLanguage, ui } from "@/lib/i18n";
 
 interface AuthViewProps {
   onSuccess: (token: string) => void;
+  language: PlatformLanguage;
 }
 
-export default function AuthView({ onSuccess }: AuthViewProps) {
+export default function AuthView({ onSuccess, language }: AuthViewProps) {
+  const t = ui[language];
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     phone: "",
@@ -53,7 +56,7 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
     e.preventDefault();
     
     if (formData.password.length < 6) {
-        alert("Пароль должен быть не менее 6 символов!");
+        alert(t.passwordShort);
         return;
     }
 
@@ -94,14 +97,14 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
         if (authData.access_token) {
           onSuccess(authData);
         } else {
-          alert("Ошибка: Сервер не прислал ключ доступа.");
+          alert(t.noAccessToken);
         }
       } else {
         const msg = Array.isArray(data.message) ? data.message.join("\n") : data.message;
         alert(`ОШИБКА (${res.status}):\n${msg}`);
       }
     } catch (err) {
-      alert("Не удалось связаться с сервером. Проверьте терминал бэкенда.");
+      alert(t.cannotReachServer);
     } finally {
       setLoading(false);
     }
@@ -116,11 +119,11 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
             <div className="flex items-center justify-center gap-2 mb-4">
                <div className={`size-2 rounded-full ${serverStatus === 'online' ? 'bg-green-500 animate-pulse' : serverStatus === 'offline' ? 'bg-red-500' : 'bg-gray-300'}`} />
                <span className="text-[10px] font-bold uppercase opacity-40">
-                 {serverStatus === 'online' ? 'Сервер Онлайн' : serverStatus === 'offline' ? 'Сервер Оффлайн' : 'Проверка...'}
+                 {serverStatus === 'online' ? t.serverOnline : serverStatus === 'offline' ? t.serverOffline : t.checking}
                </span>
             </div>
             <p className="text-[#2F6B3D]/60 text-xs font-bold uppercase tracking-widest">
-              {isLogin ? "Авторизация" : "Регистрация фермера"}
+              {isLogin ? t.auth : t.farmerRegistration}
             </p>
           </div>
 
@@ -128,7 +131,7 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
             {!isLogin && (
               <>
                 <div className="space-y-1">
-                  <Label htmlFor="fullName" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">ФИО</Label>
+                  <Label htmlFor="fullName" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">{t.fullName}</Label>
                   <Input 
                     id="fullName" 
                     placeholder="Едиль Таласбеков" 
@@ -140,7 +143,7 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label htmlFor="region" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">Область</Label>
+                    <Label htmlFor="region" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">{t.region}</Label>
                     <Input 
                       id="region" 
                       placeholder="Алматинская" 
@@ -151,7 +154,7 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="district" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">Район</Label>
+                    <Label htmlFor="district" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">{t.district}</Label>
                     <Input 
                       id="district" 
                       placeholder="Талгар" 
@@ -165,7 +168,7 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
               </>
             )}
             <div className="space-y-1">
-              <Label htmlFor="phone" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">Телефон</Label>
+              <Label htmlFor="phone" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">{t.phone}</Label>
               <Input 
                 id="phone" 
                 placeholder="+7 (702) 600..." 
@@ -176,11 +179,11 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="password" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">Пароль</Label>
+              <Label htmlFor="password" className="text-[10px] font-black text-[#2F6B3D]/50 ml-2 uppercase">{t.password}</Label>
               <Input 
                 id="password" 
                 type="password" 
-                placeholder="Минимум 6 символов" 
+                placeholder={t.passwordShort.replace("Пароль должен быть ", "").replace("!", "")} 
                 className="rounded-2xl h-14 bg-[#F5F9F4] border-none font-bold text-[#2F6B3D]"
                 value={formData.password}
                 onChange={e => setFormData({...formData, password: e.target.value})}
@@ -196,9 +199,9 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="size-4 border-2 border-white/20 border-t-white animate-spin rounded-full" />
-                  <span>Подождите...</span>
+                  <span>{t.wait}</span>
                 </div>
-              ) : (isLogin ? "Войти в систему" : "Создать аккаунт")}
+              ) : (isLogin ? t.signIn : t.createAccount)}
             </Button>
           </form>
 
@@ -208,7 +211,7 @@ export default function AuthView({ onSuccess }: AuthViewProps) {
               onClick={() => setIsLogin(!isLogin)}
               className="text-xs font-black text-[#2F6B3D] hover:underline uppercase tracking-wider opacity-60 hover:opacity-100 transition-opacity"
             >
-              {isLogin ? "Нет аккаунта? Регистрация" : "Уже есть аккаунт? Вход"}
+              {isLogin ? t.noAccount : t.haveAccount}
             </button>
           </div>
         </CardContent>

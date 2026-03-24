@@ -9,21 +9,39 @@ import MarketView from "@/components/ui/market-view";
 import ProfileView from "@/components/ui/profile-view";
 import AuthView from "@/components/ui/auth-view";
 import { Map as MapIcon, ShoppingBasket, User, Navigation2, Plus } from "lucide-react";
+import { cropLabels, PlatformLanguage, ui } from "@/lib/i18n";
+import { area as turfArea } from "@turf/turf";
 
 export default function Home() {
   const mapRef = useRef<MapRef>(null);
   const [isPoleOpen, setIsPoleOpen] = useState(false);
   const [drawnGeometry, setDrawnGeometry] = useState<any>(null);
-  const [selectedCrop, setSelectedCrop] = useState("Арбуз");
+  const [language, setLanguage] = useState<PlatformLanguage>("ru");
+  const [fieldName, setFieldName] = useState("Орёл 22");
+  const [selectedCrop, setSelectedCrop] = useState<string>(cropLabels.ru.watermelon);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"map" | "market" | "profile">("map");
   const [isDrawing, setIsDrawing] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
+  const t = ui[language];
+  const areaSizeHectares = drawnGeometry
+    ? turfArea({
+        type: "Feature",
+        geometry: drawnGeometry,
+        properties: {},
+      }) / 10000
+    : 0;
+
   useEffect(() => {
     const token = localStorage.getItem("agro_token");
     if (token) setIsLoggedIn(true);
   }, []);
+
+  useEffect(() => {
+    setSelectedCrop(cropLabels[language].watermelon);
+    setFieldName(language === "ru" ? "Орёл 22" : language === "kk" ? "Қыран 22" : "Eagle 22");
+  }, [language]);
 
   const handleAuthSuccess = (authData: any) => {
     localStorage.setItem("agro_token", authData.access_token);
@@ -41,8 +59,13 @@ export default function Home() {
 
   const submitPlot = async () => {
     if (!drawnGeometry) {
-      alert("Сначала нарисуйте участок на карте!");
+      alert(t.drawFieldFirst);
       setIsPoleOpen(false);
+      return;
+    }
+
+    if (!fieldName.trim()) {
+      alert(`${t.fieldName}: ${t.fieldNamePlaceholder}`);
       return;
     }
 
@@ -56,10 +79,10 @@ export default function Home() {
           "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
-          title: "Мое новое поле",
+          title: fieldName.trim(),
           region: "Алматинская",
           district: "Талгарский",
-          areaSizeHectares: 25.5,
+          areaSizeHectares: Number(areaSizeHectares.toFixed(2)),
           geometry: JSON.stringify(drawnGeometry),
           cropType: selectedCrop,
           seasonYear: 2024
@@ -69,13 +92,13 @@ export default function Home() {
       const json = await res.json();
       
       if (json.success) {
-        alert(`Поле сохранено!\n\nСтатус анализа: ${json.data.analysis.riskLevel}\n${json.data.analysis.message}`);
+        alert(`${t.plotSaved}\n\n${t.analysisStatus}: ${json.data.analysis.riskLevel}\n${json.data.analysis.message}`);
         mapRef.current?.refreshPlots();
       } else {
         alert("Ошибка: " + json.message);
       }
     } catch (e) {
-      alert("Ошибка при сохранении.");
+      alert(t.saveError);
     } finally {
       setIsSubmitting(false);
       setIsPoleOpen(false);
@@ -84,34 +107,59 @@ export default function Home() {
 
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-[#EAF3E7] font-sans">
-      {!isLoggedIn && <AuthView onSuccess={handleAuthSuccess} />}
+      {!isLoggedIn && <AuthView onSuccess={handleAuthSuccess} language={language} />}
       
       {/* 1. Full-screen Map Background */}
       <div className={`absolute inset-0 z-0 transition-opacity duration-300 ${activeTab === 'map' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <Map ref={mapRef} onGeometrySelected={handleMapDraw} drawModeActive={isDrawing} />
+        <Map
+          ref={mapRef}
+          onGeometrySelected={handleMapDraw}
+          drawModeActive={isDrawing}
+          language={language}
+          showMeasurements={true}
+        />
       </div>
 
-      {activeTab === 'market' && <MarketView />}
-      {activeTab === 'profile' && <ProfileView />}
+      {activeTab === 'market' && <MarketView language={language} />}
+      {activeTab === 'profile' && <ProfileView language={language} />}
 
       {/* Map Specific UI overlays */}
       <div className={activeTab === 'map' ? 'block' : 'hidden'}>
+        <div className="absolute top-6 left-1/2 z-20 -translate-x-1/2">
+          <div className="flex items-center gap-1 rounded-full bg-white/88 p-1 shadow-lg backdrop-blur-md">
+            {(["ru", "kk", "en"] as PlatformLanguage[]).map((lang) => (
+              <button
+                key={lang}
+                type="button"
+                onClick={() => setLanguage(lang)}
+                className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] transition-colors ${
+                  language === lang
+                    ? "bg-[#2F6B3D] text-white"
+                    : "text-[#2F6B3D]/60 hover:bg-[#F5F9F4]"
+                }`}
+              >
+                {lang}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* 2. Top-Left Floating Legend Card */}
         <div className="absolute top-6 left-6 z-10 w-44">
           <Card className="shadow-lg border-none bg-white/90 backdrop-blur-md rounded-[1.5rem] p-4">
-            <h3 className="text-xs font-black uppercase tracking-wider text-[#2F6B3D] opacity-40 mb-3">Легенда</h3>
+            <h3 className="text-xs font-black uppercase tracking-wider text-[#2F6B3D] opacity-40 mb-3">{t.legend}</h3>
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <div className="size-6 rounded-full bg-[#F5F9F4] flex items-center justify-center text-[10px] shadow-sm">🍉</div>
-                <span className="text-sm font-bold text-[#2F6B3D]">Арбуз</span>
+                <span className="text-sm font-bold text-[#2F6B3D]">{cropLabels[language].watermelon}</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="size-6 rounded-full bg-[#F5F9F4] flex items-center justify-center text-[10px] shadow-sm">🥔</div>
-                <span className="text-sm font-bold text-[#2F6B3D]">Картофель</span>
+                <span className="text-sm font-bold text-[#2F6B3D]">{cropLabels[language].potato}</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="size-6 rounded-full bg-[#F5F9F4] flex items-center justify-center text-[10px] shadow-sm">🌾</div>
-                <span className="text-sm font-bold text-[#2F6B3D]">Пшеница</span>
+                <span className="text-sm font-bold text-[#2F6B3D]">{cropLabels[language].wheat}</span>
               </div>
             </div>
           </Card>
@@ -119,7 +167,11 @@ export default function Home() {
 
         {/* 3. Top-Right Location Button */}
         <div className="absolute top-6 right-6 z-10">
-          <Button size="icon" className="size-13 rounded-2xl bg-white/90 backdrop-blur-md text-[#2F6B3D] shadow-xl border-none hover:bg-white transition-all">
+          <Button
+            size="icon"
+            onClick={() => mapRef.current?.focusCurrentLocation()}
+            className="size-13 rounded-2xl bg-white/90 backdrop-blur-md text-[#2F6B3D] shadow-xl border-none hover:bg-white transition-all"
+          >
             <Navigation2 className="size-6 fill-[#2F6B3D]" />
           </Button>
         </div>
@@ -131,7 +183,7 @@ export default function Home() {
             onClick={() => setIsDrawing(true)}
           >
             <Plus className="size-6 stroke-[3px]" />
-            Моё поле
+            {t.myField}
           </Button>
         </div>
       </div>
@@ -139,13 +191,31 @@ export default function Home() {
       <ActionModal 
         isOpen={isPoleOpen}
         onClose={() => setIsPoleOpen(false)}
-        title="Новое поле"
-        primaryActionText={isSubmitting ? "Сохранение..." : "Сохранить"}
+        title={t.newField}
+        primaryActionText={isSubmitting ? t.saving : t.save}
         onPrimaryAction={submitPlot}
+        language={language}
       >
         <p className="mb-4 text-[#2F6B3D] font-bold opacity-70">
-          Вы выбрали участок. Укажите планируемую культуру:
+          {t.chooseCrop}
         </p>
+
+        <div className="mb-4">
+          <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-[#2F6B3D]/50">
+            {t.fieldName}
+          </label>
+          <input
+            type="text"
+            value={fieldName}
+            onChange={(e) => setFieldName(e.target.value)}
+            placeholder={t.fieldNamePlaceholder}
+            className="h-14 w-full rounded-2xl border-none bg-[#F5F9F4] px-4 text-sm font-bold text-[#2F6B3D] shadow-inner outline-none"
+          />
+        </div>
+
+        <div className="mb-4 rounded-2xl bg-[#F5F9F4] px-4 py-3 text-sm font-bold text-[#2F6B3D] shadow-inner">
+          {t.area}: {areaSizeHectares.toFixed(2)} {t.hectares}
+        </div>
         
         <div className="flex flex-col gap-2 mb-2">
           <select 
@@ -153,9 +223,9 @@ export default function Home() {
             value={selectedCrop}
             onChange={(e) => setSelectedCrop(e.target.value)}
           >
-            <option value="Арбуз">🍉 Арбуз</option>
-            <option value="Картофель">🥔 Картофель</option>
-            <option value="Пшеница">🌾 Пшеница</option>
+            <option value={cropLabels[language].watermelon}>🍉 {cropLabels[language].watermelon}</option>
+            <option value={cropLabels[language].potato}>🥔 {cropLabels[language].potato}</option>
+            <option value={cropLabels[language].wheat}>🌾 {cropLabels[language].wheat}</option>
           </select>
         </div>
       </ActionModal>
@@ -170,7 +240,7 @@ export default function Home() {
             <div className={`p-3 rounded-2xl group-active:scale-95 transition-all ${activeTab === 'map' ? 'bg-[#2F6B3D] text-white shadow-lg shadow-green-900/20' : ''}`}>
               <MapIcon className="size-6" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest">Карта</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">{t.map}</span>
           </button>
           
           <button 
@@ -180,7 +250,7 @@ export default function Home() {
             <div className={`p-3 rounded-2xl group-active:scale-95 transition-all ${activeTab === 'market' ? 'bg-[#2F6B3D] text-white shadow-lg shadow-green-900/20' : ''}`}>
               <ShoppingBasket className="size-6" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest">Маркет</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">{t.market}</span>
           </button>
           
           <button 
@@ -190,11 +260,10 @@ export default function Home() {
             <div className={`p-3 rounded-2xl group-active:scale-95 transition-all ${activeTab === 'profile' ? 'bg-[#2F6B3D] text-white shadow-lg shadow-green-900/20' : ''}`}>
               <User className="size-6" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest">Профиль</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">{t.profile}</span>
           </button>
         </div>
       </div>
     </main>
   );
 }
-
