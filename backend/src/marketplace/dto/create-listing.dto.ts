@@ -13,6 +13,11 @@ export class CreateListingDto {
   @IsNotEmpty()
   title: string;
 
+  @ApiProperty({ example: 'Фрукты' })
+  @IsString()
+  @IsNotEmpty()
+  category: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

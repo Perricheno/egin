@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Patch, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, Delete, UseGuards, Req, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MarketplaceService } from './marketplace.service';
@@ -18,9 +18,14 @@ export class MarketplaceController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all listings' })
-  findAll() {
-    return this.marketplaceService.findAll();
+  @ApiOperation({ summary: 'Get all listings, optionally filter by category or search term' })
+  findAll(
+    @Query('category') category?: string,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
+  ) {
+    return this.marketplaceService.findAll(category, search, sortBy, sortOrder);
   }
 
   @Get(':id')

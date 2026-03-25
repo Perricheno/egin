@@ -20,8 +20,28 @@ export class MarketplaceService {
     return this.listingRepository.save(listing);
   }
 
-  findAll(): Promise<MarketplaceListing[]> {
-    return this.listingRepository.find({ relations: ['farmer'] });
+  async findAll(category?: string, search?: string, sortBy: string = 'createdAt', sortOrder: 'ASC' | 'DESC' = 'DESC'): Promise<MarketplaceListing[]> {
+    const query = this.listingRepository.createQueryBuilder('listing')
+      .leftJoinAndSelect('listing.farmer', 'farmer');
+
+    if (category && category !== 'Все') {
+      query.andWhere('listing.category = :category', { category });
+    }
+
+    if (search) {
+      query.andWhere(
+        '(LOWER(listing.title) LIKE LOWER(:search) OR LOWER(listing.location) LIKE LOWER(:search) OR LOWER(listing.cropId) LIKE LOWER(:search))',
+        { search: `%${search}%` },
+      );
+    }
+
+    const validSortFields = ['createdAt', 'price'];
+    const actualSortBy = validSortFields.includes(sortBy) ? `listing.${sortBy}` : 'listing.createdAt';
+    const actualSortOrder = sortOrder === 'ASC' ? 'ASC' : 'DESC';
+
+    query.orderBy(actualSortBy, actualSortOrder);
+
+    return query.getMany();
   }
 
   async findOne(id: string): Promise<MarketplaceListing> {

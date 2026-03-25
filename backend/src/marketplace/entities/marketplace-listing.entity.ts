@@ -22,6 +22,9 @@ export class MarketplaceListing {
   @Column()
   cropId: string; // Foreign key conceptually mapped in service or relation
 
+  @Column({ default: 'Все' })
+  category: string;
+
   @Column()
   title: string;
 

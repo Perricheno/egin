@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req, Patch, Param, Delete } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FarmPlotsService } from './farm-plots.service';
@@ -25,5 +25,19 @@ export class FarmPlotsController {
   async findAll() {
     const data = await this.farmPlotsService.findAll();
     return { success: true, data };
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a farm plot by id.' })
+  async update(@Param('id') id: string, @Body() updateData: any) {
+    const data = await this.farmPlotsService.update(id, updateData);
+    return { success: true, data };
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a farm plot by id.' })
+  async remove(@Param('id') id: string) {
+    await this.farmPlotsService.remove(id);
+    return { success: true };
   }
 }

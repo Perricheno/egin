@@ -149,4 +149,13 @@ export class FarmPlotsService {
   findAll(): Promise<FarmPlot[]> {
     return this.plotRepository.find();
   }
+
+  async update(id: string, updateData: Partial<FarmPlot>): Promise<FarmPlot> {
+    await this.plotRepository.update(id, updateData);
+    return this.plotRepository.findOneByOrFail({ id });
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.plotRepository.delete(id);
+  }
 }
