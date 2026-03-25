@@ -284,46 +284,46 @@ export default function Home() {
         </div>
 
         {/* Top-Right Professional GIS Toolbar */}
-        <div className="absolute top-6 right-6 z-10 flex flex-col gap-4 items-center pointer-events-auto">
-          <Button 
-            size="icon" 
-            className="size-13 rounded-2xl bg-white/90 backdrop-blur-md text-[#2F6B3D] shadow-xl border-none hover:bg-white transition-all"
-            onClick={() => mapRef.current?.focusCurrentLocation()}
-            title={t.noLocation || 'Где я?'}
-          >
-            <Navigation2 className="size-6 fill-[#2F6B3D]" />
-          </Button>
+        <div className="absolute top-6 right-6 z-10 flex flex-col gap-4 pointer-events-auto">
+          <div className="bg-white/95 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-3xl p-3 w-16 flex flex-col items-center border border-white/40">
+            {/* GROUP: Навигация */}
+            <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 mt-1">Вид</span>
+            <Button size="icon" variant="ghost" className="size-10 rounded-xl transition-all text-[#2F6B3D] hover:bg-green-50 mb-1" onClick={() => mapRef.current?.focusCurrentLocation()} title={t.noLocation || 'Где я?'}><Navigation2 className="size-5" /></Button>
+            <Button size="icon" variant="ghost" onClick={() => setIsRulerActive(!isRulerActive)} className={`size-10 rounded-xl transition-all ${isRulerActive ? 'bg-[#2F6B3D] text-white' : 'text-[#2F6B3D] hover:bg-green-50'}`} title="Линейки измерений"><Ruler className="size-5" /></Button>
 
-          <Button 
-            onClick={() => setIsRulerActive(!isRulerActive)}
-            className={`size-13 rounded-2xl bg-white/90 backdrop-blur-md shadow-xl border-none transition-all ${isRulerActive ? 'bg-[#2F6B3D] text-white hover:bg-[#2F6B3D] hover:opacity-90' : 'text-[#2F6B3D] hover:bg-white'}`}
-            title="Отображать измерения"
-          >
-            <Ruler className="size-6" />
-          </Button>
+            <div className="h-px w-10 bg-[#2F6B3D]/10 my-3" />
 
-          <div className="bg-white/90 backdrop-blur-md shadow-xl rounded-3xl p-2 flex flex-col gap-1 w-13 items-center">
-            {/* GIS Mode Controls */}
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all ${drawMode === 'simple_select' ? 'bg-[#2F6B3D] text-white' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('simple_select')} title="Выбрать объект"><MousePointer2 className="size-5" /></Button>
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all ${drawMode === 'direct_select' ? 'bg-[#2F6B3D] text-white' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('direct_select')} title="Редактировать узлы"><Focus className="size-5" /></Button>
-            <div className="h-px w-8 bg-black/10 my-1 rounded-full" />
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all ${drawMode === 'draw_polygon' ? 'bg-[#2F6B3D] text-white' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('draw_polygon')} title="Полигон"><Hexagon className="size-5" /></Button>
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all ${drawMode === 'draw_line_string' ? 'bg-[#2F6B3D] text-white' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('draw_line_string')} title="Линия"><Spline className="size-5" /></Button>
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all ${drawMode === 'draw_point' ? 'bg-[#2F6B3D] text-white' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('draw_point')} title="Метка"><MapPin className="size-5" /></Button>
-            <div className="h-px w-8 bg-black/10 my-1 rounded-full" />
-            <Button size="icon" variant="ghost" className="size-10 rounded-xl text-red-500 hover:bg-red-50 transition-all" onClick={() => mapRef.current?.deleteSelectedDraw()} title="Стереть"><Eraser className="size-5" /></Button>
+            {/* GROUP: Выделение */}
+            <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2">Курсор</span>
+            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all mb-1 ${drawMode === 'simple_select' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('simple_select')} title="Выбрать объект (Select)"><MousePointer2 className="size-5" /></Button>
+            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all ${drawMode === 'direct_select' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('direct_select')} title="Редактировать узлы (Direct Select)"><Focus className="size-5" /></Button>
+
+            <div className="h-px w-10 bg-[#2F6B3D]/10 my-3" />
+
+            {/* GROUP: Рисование */}
+            <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2">Эскиз</span>
+            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all mb-1 ${drawMode === 'draw_polygon' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('draw_polygon')} title="Нарисовать полигон (Поле)"><Hexagon className="size-5" /></Button>
+            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all mb-1 ${drawMode === 'draw_line_string' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('draw_line_string')} title="Нарисовать линию (Дорога/Канал)"><Spline className="size-5" /></Button>
+            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all ${drawMode === 'draw_point' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('draw_point')} title="Поставить метку"><MapPin className="size-5" /></Button>
+
+            <div className="h-px w-10 bg-[#2F6B3D]/10 my-3" />
+
+            {/* GROUP: Действия */}
+            <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2">Очистка</span>
+            <Button size="icon" variant="ghost" className="size-10 rounded-xl text-red-500 hover:bg-red-50 transition-all" onClick={() => mapRef.current?.deleteSelectedDraw()} title="Удалить выбранное"><Eraser className="size-5" /></Button>
           </div>
         </div>
 
-        {/* Dynamic Measurement Banner */}
+        {/* Dynamic Measurement Banner - Moved to Bottom to prevent overlap with Languages */}
         {measurement && (
-          <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3">
-            <div className="bg-[#2F6B3D]/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl font-bold shadow-xl flex items-center gap-2">
-              <span>{measurement}</span>
+          <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 pointer-events-auto">
+            <div className="bg-[#2F6B3D] text-white px-6 py-2.5 rounded-full font-black tracking-wider text-sm shadow-[0_10px_30px_rgba(47,107,61,0.4)] border border-white/20 flex flex-col items-center justify-center">
+              <span className="text-[9px] uppercase tracking-[0.2em] opacity-60 mb-0.5">Текущее выделение</span>
+              {measurement}
             </div>
-            <Button onClick={handleSaveNewPlot} className="px-5 py-6 rounded-2xl bg-[#C6A85E] text-white font-black hover:bg-[#b09450] shadow-xl hover:scale-105 transition-all flex gap-2">
-              <Save className="size-5" />
-              {t.save || 'Сохранить'}
+            <Button onClick={handleSaveNewPlot} className="h-14 px-8 rounded-full bg-[#C6A85E] text-white font-black hover:bg-[#b09450] shadow-xl hover:scale-105 active:scale-95 transition-all outline-none border-2 border-white/20">
+              <Save className="size-5 mr-2" />
+              {t.save || 'СОХРАНИТЬ В БАЗУ'}
             </Button>
           </div>
         )}
