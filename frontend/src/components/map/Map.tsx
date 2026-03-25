@@ -6,22 +6,17 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import { mapboxGlDrawTheme } from './draw-theme';
-import * as turf from '@turf/turf';
 
 interface MapProps {
-  onPlotClick?: (plot: any) => void;
-  onModeChange?: (mode: string) => void;
-  onMeasurement?: (val: string | null) => void;
+  onGeometrySelected?: (geom: any) => void;
+  drawModeActive?: boolean;
 }
 
 export interface MapRef {
   refreshPlots: () => void;
-  changeDrawMode: (mode: string) => void;
-  deleteSelectedDraw: () => void;
-  getSelectedGeometry: () => any;
 }
 
-const Map = forwardRef<MapRef, MapProps>(({ onPlotClick, onModeChange, onMeasurement }, ref) => {
+const Map = forwardRef<MapRef, MapProps>(({ onGeometrySelected, drawModeActive }, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
@@ -34,36 +29,56 @@ const Map = forwardRef<MapRef, MapProps>(({ onPlotClick, onModeChange, onMeasure
     mapRef.current?.zoomOut();
   };
 
-  const fetchPlots = async (map: maplibregl.Map) => {
-    try {
-      const response = await fetch('http://localhost:3000/farm-plots');
-      const json = await response.json();
-      
-      if (json.success) {
-        const features = json.data.map((plot: any) => ({
-          type: 'Feature',
-          properties: {
-            id: plot.id,
-            cropType: plot.cropType,
-            title: plot.title,
-          },
-          geometry: typeof plot.geometry === 'string' ? JSON.parse(plot.geometry) : plot.geometry
-        }));
+    const fetchPlots = async (map: maplibregl.Map) => {
+      try {
+        const response = await fetch("http://localhost:3008/farm-plots");
 
-        const source = map.getSource('farm-plots') as maplibregl.GeoJSONSource;
+        if (!response.ok) return;
+
+        const json = await response.json();
+
+        if (!json.success) return;
+
+        const features = json.data
+          .map((plot: any) => {
+            const geometry =
+              typeof plot.geometry === "string"
+                ? JSON.parse(plot.geometry)
+                : plot.geometry;
+
+            if (!geometry) return null;
+
+            return {
+              type: "Feature",
+              properties: {
+                id: plot.id,
+                cropType: plot.cropType,
+                title: plot.title,
+              },
+              geometry,
+            };
+          })
+          .filter(Boolean);
+
+        const source = map.getSource("farm-plots") as
+          | maplibregl.GeoJSONSource
+          | undefined;
+
         if (source) {
           source.setData({
-            type: 'FeatureCollection',
-            features: features
+            type: "FeatureCollection",
+            features: features as any[],
           });
-        } else {
-          map.addSource('farm-plots', {
-            type: 'geojson',
-            data: {
-              type: 'FeatureCollection',
-              features: features
-            }
-          });
+          return;
+        }
+
+        map.addSource("farm-plots", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: features as any[],
+          },
+        });
 
           map.addLayer({
             id: 'farm-plots-layer',
@@ -75,71 +90,21 @@ const Map = forwardRef<MapRef, MapProps>(({ onPlotClick, onModeChange, onMeasure
                 ['get', 'cropType'],
                 'Арбуз', '#2F6B3D',
                 'Картофель', '#C6A85E',
-                'Пшеница', '#FFD700',
-                'Кукуруза', '#228B22',
-                'Хлопок', '#F0F8FF',
-                'Яблоня', '#8B0000',
-                '#888888'
+                '#888'
               ],
-              'fill-opacity': 0.6,
-            }
-          });
-
-          map.addLayer({
-            id: 'farm-plots-outline',
-            type: 'line',
-            source: 'farm-plots',
-            paint: {
-              'line-color': '#000000',
-              'line-width': 2,
-              'line-opacity': 0.8
-            }
-          });
-
-          map.addLayer({
-            id: 'farm-plots-labels',
-            type: 'symbol',
-            source: 'farm-plots',
-            layout: {
-              'text-field': [
-                'format',
-                ['get', 'title'],
-                { 'font-scale': 1.1, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] },
-                '\n',
-                ['get', 'cropType'],
-                { 'font-scale': 0.8, 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'] }
-              ],
-              'text-size': 14,
-              'text-anchor': 'center',
-              'text-justify': 'center',
-              'symbol-placement': 'point'
-            },
-            paint: {
-              'text-color': '#ffffff',
-              'text-halo-color': '#000000',
-              'text-halo-width': 2
+              'fill-opacity': 0.4,
+              'fill-outline-color': '#000'
             }
           });
 
           map.on('click', 'farm-plots-layer', (e) => {
              const props = e.features?.[0].properties;
              if (props) {
-               if (onPlotClick) {
-                 onPlotClick(props);
-               } else {
-                 new maplibregl.Popup()
-                   .setLngLat(e.lngLat)
-                   .setHTML(`<strong>${props.title}</strong><br/>Культура: ${props.cropType}`)
-                   .addTo(map);
-               }
+               new maplibregl.Popup()
+                 .setLngLat(e.lngLat)
+                 .setHTML(`<strong>${props.title}</strong><br/>Культура: ${props.cropType}`)
+                 .addTo(map);
              }
-          });
-          
-          map.on('mouseenter', 'farm-plots-layer', () => {
-            map.getCanvas().style.cursor = 'pointer';
-          });
-          map.on('mouseleave', 'farm-plots-layer', () => {
-            map.getCanvas().style.cursor = '';
           });
         }
       }
@@ -153,163 +118,237 @@ const Map = forwardRef<MapRef, MapProps>(({ onPlotClick, onModeChange, onMeasure
       if (mapRef.current) {
         fetchPlots(mapRef.current);
       }
-    },
-    changeDrawMode: (mode: string) => {
-      if (drawRef.current) {
-        if (mode === 'direct_select') {
-          const selected = drawRef.current.getSelectedIds();
-          if (selected.length > 0) {
-            drawRef.current.changeMode(mode, { featureId: selected[0] });
-          } else {
-            alert('Сначала выберите нарисованный объект стрелкой для редактирования узлов');
-          }
-        } else {
-          drawRef.current.changeMode(mode);
-        }
-      }
-    },
-    deleteSelectedDraw: () => {
-      if (drawRef.current) drawRef.current.trash();
-      if (onMeasurement) onMeasurement(null);
-    },
-    getSelectedGeometry: () => {
-      if (drawRef.current) {
-         const data = drawRef.current.getSelected();
-         if (data.features.length > 0) return data.features[0].geometry;
-      }
-      return null;
     }
   }));
 
-  useEffect(() => {
-    if (!mapContainer.current) return;
+    useEffect(() => {
+      if (!mapContainer.current) return;
+      if (mapRef.current) return;
 
-    const map = new maplibregl.Map({
-      container: mapContainer.current,
-      style: {
-        version: 8,
-        sources: {
-          'osm': {
-            type: 'raster',
-            tiles: [
-              'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
-            ],
-            tileSize: 256,
-            attribution: '© OpenStreetMap contributors'
-          }
-        },
-        layers: [
-          {
-            id: 'osm-tiles',
-            type: 'raster',
-            source: 'osm',
-            minzoom: 0,
-            maxzoom: 19
-          }
-        ]
-      },
-      center: [76.8512, 43.2220],
-      zoom: 10
-    });
+      const map = new maplibregl.Map({
+        container: mapContainer.current,
+        style: OPENFREEMAP_STYLE,
+        center: KZ_CENTER,
+        zoom: KZ_ZOOM,
+        maxBounds: KZ_BOUNDS,
+      });
 
-    mapRef.current = map;
+      mapRef.current = map;
 
     const draw = new MapboxDraw({
       displayControlsDefault: false,
+      controls: {
+        polygon: true,
+        trash: true
+      },
       styles: mapboxGlDrawTheme as any,
     });
 
     drawRef.current = draw;
     map.addControl(draw as any, 'bottom-right');
 
-    map.on('draw.modechange', (e) => {
-      if (onModeChange) onModeChange(e.mode);
-    });
-
-    const updateMeasurements = () => {
-      if (!onMeasurement) return;
-      const data = draw.getSelected();
-      if (data.features.length === 0) {
-        onMeasurement(null);
-        return;
-      }
-      const feature = data.features[0];
-      if (feature.geometry.type === 'Polygon') {
-        const area = turf.area(feature);
-        const hectares = area / 10000;
-        onMeasurement(`Площадь: ${hectares.toFixed(2)} га`);
-      } else if (feature.geometry.type === 'LineString') {
-        const length = turf.length(feature, { units: 'kilometers' });
-        onMeasurement(`Длина: ${length.toFixed(2)} км`);
-      } else if (feature.geometry.type === 'Point') {
-        const coords = feature.geometry.coordinates as number[];
-        onMeasurement(`Коорд: [${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}]`);
-      } else {
-        onMeasurement(null);
-      }
-    };
-
-    map.on('draw.selectionchange', updateMeasurements);
-    map.on('draw.update', updateMeasurements);
-    map.on('draw.create', updateMeasurements);
-
-    map.on('load', () => {
-      fetchPlots(map);
-    });
-
-    map.on('draw.create', (e) => {
-      const data = draw.getAll();
-      if (data.features.length > 0) {
-        if (onGeometrySelected) {
-          onGeometrySelected(data.features[data.features.length - 1].geometry);
-          draw.deleteAll(); // Clear drawing tools after selection
+      map.on("load", () => {
+        if (!map.getSource("satellite")) {
+          map.addSource("satellite", {
+            type: "raster",
+            tiles: [
+              "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            ],
+            tileSize: 256,
+            attribution: "Tiles © Esri",
+          });
         }
-      }
-    });
 
-    map.on('draw.update', (e) => {
-      const data = draw.getAll();
-      if (data.features.length > 0) {
-        if (onGeometrySelected) {
-          onGeometrySelected(data.features[data.features.length - 1].geometry);
+        const firstLayerId = map.getStyle().layers?.[0]?.id;
+        if (!map.getLayer("satellite-tiles")) {
+          map.addLayer(
+            {
+              id: "satellite-tiles",
+              type: "raster",
+              source: "satellite",
+              minzoom: 0,
+              maxzoom: 20,
+              layout: {
+                visibility: "none",
+              },
+              paint: {
+                "raster-saturation": 0.1,
+                "raster-contrast": 0.15,
+              },
+            },
+            firstLayerId,
+          );
         }
-      }
-    });
+
+        if (!map.getSource("measurement-labels")) {
+          map.addSource("measurement-labels", {
+            type: "geojson",
+            data: {
+              type: "FeatureCollection",
+              features: [],
+            },
+          });
+        }
+
+        if (!map.getLayer("measurement-labels-layer")) {
+          map.addLayer({
+            id: "measurement-labels-layer",
+            type: "symbol",
+            source: "measurement-labels",
+            layout: {
+              "text-field": ["get", "label"],
+              "text-size": 12,
+              "text-offset": [0, -0.6],
+              "text-allow-overlap": true,
+              "text-ignore-placement": true,
+              visibility: showMeasurements ? "visible" : "none",
+            },
+            paint: {
+              "text-color": "#FFFFFF",
+              "text-halo-color": "#17311F",
+              "text-halo-width": 2,
+            },
+          });
+        }
+
+        applyMapLanguage(languageRef.current);
+        applyBaseMapMode(baseMapMode);
+        applyMeasurementVisibility();
+        fetchPlots(map);
+      });
+
+      map.on("draw.create", () => {
+        const data = draw.getAll();
+        if (data.features.length > 0) {
+          updateMeasurementLabels();
+          if (!rulerModeActive && onGeometrySelectedRef.current) {
+            onGeometrySelectedRef.current(
+              data.features[data.features.length - 1].geometry,
+            );
+            draw.deleteAll();
+            updateMeasurementLabels();
+          }
+        }
+      });
+
+      map.on("draw.update", () => {
+        const data = draw.getAll();
+        updateMeasurementLabels();
+        if (data.features.length > 0 && onGeometrySelectedRef.current) {
+          onGeometrySelectedRef.current(
+            data.features[data.features.length - 1].geometry,
+          );
+        }
+      });
+
+      map.on("draw.render", () => {
+        updateMeasurementLabels();
+      });
+
+      map.on("draw.delete", () => {
+        updateMeasurementLabels();
+      });
 
     return () => {
       map.remove();
     };
-  }, [onPlotClick, onModeChange, onMeasurement]);
+  }, [onGeometrySelected]);
 
-  return (
-    <div className="relative h-full w-full">
-      <div ref={mapContainer} className="h-full w-full" />
+  useEffect(() => {
+    if (drawRef.current && drawModeActive) {
+      drawRef.current.changeMode('draw_polygon');
+    }
+  }, [drawModeActive]);
 
-      <div className="absolute right-6 top-24 z-20 overflow-hidden rounded-[1.5rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.15)] backdrop-blur-md">
-        <button
-          type="button"
-          onClick={handleZoomIn}
-          className="flex h-16 w-16 items-center justify-center text-4xl font-light text-[#3F3F46] transition-colors hover:bg-black/5 active:bg-black/10"
-          aria-label="Приблизить карту"
-        >
-          +
-        </button>
+    return (
+      <div className="relative h-full w-full">
+        <div ref={mapContainer} className="h-full w-full" />
 
-        <div className="mx-3 h-px bg-black/10" />
+        <div className="absolute bottom-40 left-6 z-20">
+          <button
+            type="button"
+            onClick={() => setIsLayersOpen((open) => !open)}
+            className="flex w-32 flex-col overflow-hidden rounded-[1.5rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md border border-white/20 transition-all active:scale-95"
+            aria-label={t.layers}
+          >
+            <div
+              className={`h-20 w-full ${
+                baseMapMode === "satellite"
+                  ? "bg-[radial-gradient(circle_at_30%_30%,#56714b,transparent_35%),linear-gradient(135deg,#1d2a1d_0%,#415d3b_25%,#8a7b5c_55%,#2d3629_100%)]"
+                  : "bg-[linear-gradient(135deg,#d7ead6_0%,#eef5e8_42%,#bcd7b8_42%,#dcead8_100%)]"
+              }`}
+            />
+            <div className="px-4 py-3 text-left">
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-[#2F6B3D]/45">
+                {t.layers}
+              </div>
+              <div className="mt-2 text-[0.92rem] leading-tight font-black text-[#2F6B3D] break-words">
+                {baseMapMode === "simple" ? t.simple : t.satellite}
+              </div>
+            </div>
+          </button>
 
-        <button
-          type="button"
-          onClick={handleZoomOut}
-          className="flex h-16 w-16 items-center justify-center text-4xl font-light text-[#3F3F46] transition-colors hover:bg-black/5 active:bg-black/10"
-          aria-label="Отдалить карту"
-        >
-          -
-        </button>
+          {isLayersOpen && (
+            <div className="mt-3 flex w-48 flex-col gap-2 rounded-[1.5rem] bg-white/95 p-2 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md">
+              <button
+                type="button"
+                onClick={() => {
+                  setBaseMapMode("simple");
+                  setIsLayersOpen(false);
+                }}
+                className={`rounded-[1.1rem] px-4 py-3 text-left text-sm font-black transition-colors ${
+                  baseMapMode === "simple"
+                    ? "bg-[#2F6B3D] text-white"
+                    : "bg-[#F5F9F4] text-[#2F6B3D] hover:bg-[#E6F0E2]"
+                }`}
+              >
+                {t.simpleMap}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setBaseMapMode("satellite");
+                  setIsLayersOpen(false);
+                }}
+                className={`rounded-[1.1rem] px-4 py-3 text-left text-sm font-black transition-colors ${
+                  baseMapMode === "satellite"
+                    ? "bg-[#2F6B3D] text-white"
+                    : "bg-[#F5F9F4] text-[#2F6B3D] hover:bg-[#E6F0E2]"
+                }`}
+              >
+                {t.satelliteMap}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="absolute right-6 top-24 z-20 overflow-hidden rounded-[1.5rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.15)] backdrop-blur-md">
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            className="flex h-16 w-16 items-center justify-center text-4xl font-light text-[#3F3F46] transition-colors hover:bg-black/5 active:bg-black/10"
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+
+          <div className="mx-3 h-px bg-black/10" />
+
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            className="flex h-16 w-16 items-center justify-center text-4xl font-light text-[#3F3F46] transition-colors hover:bg-black/5 active:bg-black/10"
+            aria-label="Zoom out"
+          >
+            -
+          </button>
+        </div>
       </div>
-    </div>
-  );
-});
+    );
+  },
+);
+
+Map.displayName = "Map";
 
 export default Map;

@@ -11,11 +11,13 @@ import { FarmPlotsModule } from './farm-plots/farm-plots.module';
 import { CropsModule } from './crops/crops.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { OrdersModule } from './orders/orders.module';
 
 import { User } from './users/entities/user.entity';
 import { FarmPlot } from './farm-plots/entities/farm-plot.entity';
 import { Crop } from './crops/entities/crop.entity';
 import { MarketplaceListing } from './marketplace/entities/marketplace-listing.entity';
+import { Order, OrderItem } from './orders/entities/order.entity';
 
 @Module({
   imports: [
@@ -29,7 +31,7 @@ import { MarketplaceListing } from './marketplace/entities/marketplace-listing.e
       username: process.env.DB_USERNAME || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'agro_platform_db',
-      entities: [User, FarmPlot, Crop, MarketplaceListing],
+      entities: [User, FarmPlot, Crop, MarketplaceListing, Order, OrderItem],
       synchronize: true, // Use migration in actual strict production.
     }),
     UsersModule,
@@ -37,7 +39,8 @@ import { MarketplaceListing } from './marketplace/entities/marketplace-listing.e
     FarmPlotsModule,
     CropsModule,
     MarketplaceModule,
-    AnalyticsModule
+    AnalyticsModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

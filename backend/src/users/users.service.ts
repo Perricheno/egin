@@ -1,8 +1,9 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -29,6 +30,19 @@ export class UsersService {
       passwordHash,
     });
 
+    return this.usersRepository.save(user);
+  }
+
+  async updateProfile(id: string, dto: UpdateUserDto): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (dto.phone && dto.phone !== user.phone) {
+      const existing = await this.usersRepository.findOne({ where: { phone: dto.phone } });
+      if (existing) throw new ConflictException('Phone number already in use');
+    }
+
+    Object.assign(user, dto);
     return this.usersRepository.save(user);
   }
 

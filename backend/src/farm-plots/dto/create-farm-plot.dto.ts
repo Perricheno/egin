@@ -28,6 +28,7 @@ export class CreateFarmPlotDto {
   areaSizeHectares: number;
 
   @ApiProperty()
+  @IsNotEmpty()
   geometry: any; // GeoJSON string or object for Polygon boundary
 
   @ApiProperty({ example: 'Watermelon' })

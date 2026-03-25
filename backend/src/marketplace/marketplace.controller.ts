@@ -18,14 +18,9 @@ export class MarketplaceController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all listings, optionally filter by category or search term' })
-  findAll(
-    @Query('category') category?: string,
-    @Query('search') search?: string,
-    @Query('sortBy') sortBy?: string,
-    @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
-  ) {
-    return this.marketplaceService.findAll(category, search, sortBy, sortOrder);
+  @ApiOperation({ summary: 'Get all listings' })
+  findAll() {
+    return this.marketplaceService.findAll();
   }
 
   @Get(':id')
