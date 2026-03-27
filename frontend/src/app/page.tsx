@@ -12,7 +12,7 @@ import AuthView from "@/components/ui/auth-view";
 import { cropLabels, cropList, PlatformLanguage, ui } from "@/lib/i18n";
 import { area as turfArea } from "@turf/turf";
 import { KZ_REGIONS, KZ_CENTER, KZ_ZOOM, getRegionName, KzRegion, KzDistrict } from "@/lib/kz-regions";
-import { Map as MapIcon, ShoppingBasket, User, Navigation2, Plus, Shield, PenTool, Eraser, MousePointer2, Focus, Hexagon, Spline, MapPin, Save, RotateCcw, Ruler, Wand2, Sparkles, Loader2, Grid } from "lucide-react";
+import { Map as MapIcon, ShoppingBasket, User, Navigation2, Plus, Shield, PenTool, Eraser, MousePointer2, Focus, Hexagon, Spline, MapPin, Save, RotateCcw, Ruler, Wand2, Sparkles, Loader2, Grid, ChevronUp, X } from "lucide-react";
 import { AutoToolType } from "@/lib/turf-tools";
 
 export default function Home() {
@@ -35,6 +35,7 @@ export default function Home() {
   const [measurement, setMeasurement] = useState<string | null>(null);
   const [isRulerActive, setIsRulerActive] = useState(false);
   const [isProcessingWand, setIsProcessingWand] = useState(false);
+  const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
   const [notification, setNotification] = useState<{msg: string, type: 'error' | 'warning' | 'success'} | null>(null);
 
   // Drawing and Submission State
@@ -227,8 +228,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Top-Left Dynamic Filter Panel - Repositioned for Responsive Sidebar */}
-        <div className="absolute top-6 left-6 z-10 w-64 pointer-events-auto transition-all duration-500 lg:left-[120px]">
+        {/* Top-Left Dynamic Filter Panel - Desktop Only */}
+        <div className="hidden lg:block absolute top-6 left-[120px] z-10 w-64 pointer-events-auto transition-all duration-500">
           <Card className="shadow-lg border-none bg-white/95 backdrop-blur-md rounded-[1.5rem] p-0 max-h-[55vh] overflow-hidden flex flex-col">
             <div className="flex border-b border-[#F0F5EE]">
               <button onClick={() => setFilterTab("region")} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-wider transition-all ${filterTab === 'region' ? 'text-[#2F6B3D] border-b-2 border-[#2F6B3D]' : 'text-[#2F6B3D]/30'}`}>
@@ -308,8 +309,8 @@ export default function Home() {
           </Card>
         </div>
 
-        {/* Top-Right Professional GIS Toolbar */}
-        <div className="absolute top-6 right-6 z-10 flex flex-col gap-4 pointer-events-auto">
+        {/* Top-Right Professional GIS Toolbar - Desktop Only */}
+        <div className="hidden lg:flex absolute top-6 right-6 z-10 flex-col gap-4 pointer-events-auto">
           <div className="group bg-white/95 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[24px] p-3 flex flex-col items-start border border-white/40 transition-all duration-300 ease-out w-[64px] hover:w-[210px] overflow-hidden">
             {/* GROUP: Навигация */}
             <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
@@ -347,9 +348,9 @@ export default function Home() {
             <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
                <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 whitespace-nowrap">Создание</span>
             </div>
-            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'mass_magic_wand' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('mass_magic_wand'); mapRef.current?.changeDrawMode('simple_select'); }} title="Массовый захват (Box)">
+            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'mass_magic_wand' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('mass_magic_wand'); mapRef.current?.changeDrawMode('simple_select'); }} title="Авто выделение поля">
               {isProcessingWand ? <Loader2 className="size-5 shrink-0 animate-spin"/> : <Sparkles className="size-5 shrink-0" />}
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Масс. захват BBox</span>
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Авто выделение</span>
             </Button>
             <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'draw_polygon' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('draw_polygon'); mapRef.current?.changeDrawMode('draw_polygon'); }} title="Полигон">
               <Hexagon className="size-5 shrink-0" />
@@ -445,38 +446,93 @@ export default function Home() {
         </div>
       </ActionModal>
 
-      {/* Responsive Smart Navigation Bar */}
-      <div className="absolute z-50 pointer-events-auto transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] bottom-6 left-6 right-6 lg:bottom-auto lg:top-1/2 lg:-translate-y-1/2 lg:left-6 lg:right-auto">
-        <div className="w-full lg:w-[88px] h-full mx-auto max-w-md lg:max-w-none bg-white/90 backdrop-blur-2xl border border-white/40 shadow-[0_30px_60px_rgba(0,0,0,0.15)] rounded-[2.5rem] p-3 lg:py-8 lg:px-3 flex flex-row lg:flex-col items-center justify-around lg:justify-center gap-2 lg:gap-8">
-          
-          <button onClick={() => setActiveTab("map")} className={`flex flex-col items-center gap-2 group transition-all w-16 lg:w-full ${activeTab === 'map' ? 'text-[#2F6B3D] scale-105' : 'text-muted-foreground hover:text-[#2F6B3D] hover:scale-105'}`}>
-            <div className={`p-4 xl:p-4 rounded-[1.5rem] group-active:scale-95 transition-all w-full flex justify-center ${activeTab === 'map' ? 'bg-[#2F6B3D] text-white shadow-xl shadow-[#2F6B3D]/30' : 'bg-transparent text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/10'}`}>
-               <MapIcon className="size-6 lg:size-7" strokeWidth={activeTab === 'map' ? 2.5 : 2} />
-            </div>
-            <span className={`text-[9.5px] font-black uppercase tracking-widest transition-colors ${activeTab === 'map' ? 'text-[#2F6B3D]' : 'opacity-0 lg:opacity-100 group-hover:opacity-100'}`}>{t.map || 'Карта'}</span>
-          </button>
-          
-          <button onClick={() => setActiveTab("market")} className={`flex flex-col items-center gap-2 group transition-all w-16 lg:w-full ${activeTab === 'market' ? 'text-[#2F6B3D] scale-105' : 'text-muted-foreground hover:text-[#2F6B3D] hover:scale-105'}`}>
-            <div className={`p-4 xl:p-4 rounded-[1.5rem] group-active:scale-95 transition-all w-full flex justify-center ${activeTab === 'market' ? 'bg-[#2F6B3D] text-white shadow-xl shadow-[#2F6B3D]/30' : 'bg-transparent text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/10'}`}>
-               <ShoppingBasket className="size-6 lg:size-7" strokeWidth={activeTab === 'market' ? 2.5 : 2} />
-            </div>
-            <span className={`text-[9.5px] font-black uppercase tracking-widest transition-colors ${activeTab === 'market' ? 'text-[#2F6B3D]' : 'opacity-0 lg:opacity-100 group-hover:opacity-100'}`}>{t.market || 'Рынок'}</span>
-          </button>
-          
-          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center gap-2 group transition-all w-16 lg:w-full ${activeTab === 'admin' ? 'text-[#2F6B3D] scale-105' : 'text-muted-foreground hover:text-[#2F6B3D] hover:scale-105'}`}>
-            <div className={`p-4 xl:p-4 rounded-[1.5rem] group-active:scale-95 transition-all w-full flex justify-center ${activeTab === 'admin' ? 'bg-[#2F6B3D] text-white shadow-xl shadow-[#2F6B3D]/30' : 'bg-transparent text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/10'}`}>
-               <Shield className="size-6 lg:size-7" strokeWidth={activeTab === 'admin' ? 2.5 : 2} />
-            </div>
-            <span className={`text-[9.5px] font-black uppercase tracking-widest transition-colors ${activeTab === 'admin' ? 'text-[#2F6B3D]' : 'opacity-0 lg:opacity-100 group-hover:opacity-100'}`}>Админка</span>
-          </button>
-          
-          <button onClick={() => setActiveTab("profile")} className={`flex flex-col items-center gap-2 group transition-all w-16 lg:w-full ${activeTab === 'profile' ? 'text-[#2F6B3D] scale-105' : 'text-muted-foreground hover:text-[#2F6B3D] hover:scale-105'}`}>
-            <div className={`p-4 xl:p-4 rounded-[1.5rem] group-active:scale-95 transition-all w-full flex justify-center ${activeTab === 'profile' ? 'bg-[#2F6B3D] text-white shadow-xl shadow-[#2F6B3D]/30' : 'bg-transparent text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/10'}`}>
-               <User className="size-6 lg:size-7" strokeWidth={activeTab === 'profile' ? 2.5 : 2} />
-            </div>
-            <span className={`text-[9.5px] font-black uppercase tracking-widest transition-colors ${activeTab === 'profile' ? 'text-[#2F6B3D]' : 'opacity-0 lg:opacity-100 group-hover:opacity-100'}`}>{t.profile || 'Профиль'}</span>
+      {/* ═══ MOBILE: Floating GIS Tools Strip (< lg) ═══ */}
+      {activeTab === 'map' && (
+        <div className="lg:hidden fixed z-[60] pointer-events-auto transition-all duration-500">
+          {/* FAB Toggle Button */}
+          <button
+            onClick={() => setIsMobileToolsOpen(!isMobileToolsOpen)}
+            className={`fixed bottom-[92px] right-4 z-[61] w-12 h-12 rounded-full flex items-center justify-center shadow-xl transition-all duration-300 active:scale-90 ${
+              isMobileToolsOpen
+                ? 'bg-red-500 text-white rotate-45 shadow-red-500/30'
+                : 'bg-[#2F6B3D] text-white shadow-[#2F6B3D]/40'
+            }`}
+          >
+            {isMobileToolsOpen ? <X className="size-5" /> : <Plus className="size-5" strokeWidth={3} />}
           </button>
 
+          {/* Tool Strip */}
+          {isMobileToolsOpen && (
+            <div className="fixed bottom-[92px] left-3 right-[68px] z-[60] animate-in slide-in-from-bottom-5 fade-in duration-300">
+              <div className="bg-white/95 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-white/50 p-2">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  <button onClick={() => { setDrawMode('mass_magic_wand'); mapRef.current?.changeDrawMode('simple_select'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'mass_magic_wand' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
+                    {isProcessingWand ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                    <span className="whitespace-nowrap">Авто</span>
+                  </button>
+                  <button onClick={() => { setDrawMode('draw_polygon'); mapRef.current?.changeDrawMode('draw_polygon'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'draw_polygon' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
+                    <Hexagon className="size-4" />
+                    <span className="whitespace-nowrap">Полигон</span>
+                  </button>
+                  <button onClick={() => { setDrawMode('draw_line_string'); mapRef.current?.changeDrawMode('draw_line_string'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'draw_line_string' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
+                    <Spline className="size-4" />
+                    <span className="whitespace-nowrap">Линия</span>
+                  </button>
+                  <button onClick={() => { setDrawMode('draw_point'); mapRef.current?.changeDrawMode('draw_point'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'draw_point' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
+                    <MapPin className="size-4" />
+                    <span className="whitespace-nowrap">Метка</span>
+                  </button>
+                  <button onClick={() => { mapRef.current?.executeAutoTool('hexGrid_1ha'); setIsMobileToolsOpen(false); }} className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100 transition-all active:scale-95">
+                    <Grid className="size-4" />
+                    <span className="whitespace-nowrap">Соты</span>
+                  </button>
+                  <button onClick={() => { mapRef.current?.deleteSelectedDraw(); setIsMobileToolsOpen(false); }} className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold bg-red-50 text-red-500 hover:bg-red-100 transition-all active:scale-95">
+                    <Eraser className="size-4" />
+                    <span className="whitespace-nowrap">Удалить</span>
+                  </button>
+                  <button onClick={() => { setDrawMode('simple_select'); mapRef.current?.changeDrawMode('simple_select'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'simple_select' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
+                    <MousePointer2 className="size-4" />
+                    <span className="whitespace-nowrap">Курсор</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ MOBILE: iOS-Style Bottom Tab Bar (< lg) ═══ */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 pointer-events-auto">
+        <div className="mx-4 mb-3 bg-white/80 backdrop-blur-2xl border border-white/50 shadow-[0_-4px_30px_rgba(0,0,0,0.08)] rounded-[2rem] h-[72px] flex items-center justify-around px-2">
+          {[
+            { key: 'map' as const, icon: MapIcon, label: t.map || 'Карта' },
+            { key: 'market' as const, icon: ShoppingBasket, label: t.market || 'Маркет' },
+            { key: 'admin' as const, icon: Shield, label: 'Админ' },
+            { key: 'profile' as const, icon: User, label: t.profile || 'Профиль' },
+          ].map(({ key, icon: Icon, label }) => (
+            <button key={key} onClick={() => setActiveTab(key)} className={`relative flex flex-col items-center justify-center gap-0.5 w-16 h-full transition-all duration-300 active:scale-90 ${activeTab === key ? 'text-[#2F6B3D]' : 'text-[#9CA3AF]'}`}>
+              {activeTab === key && <div className="absolute -top-0.5 w-5 h-[3px] rounded-full bg-[#2F6B3D]" />}
+              <Icon className="size-[22px]" strokeWidth={activeTab === key ? 2.5 : 1.8} />
+              <span className={`text-[10px] font-semibold leading-none mt-0.5 ${activeTab === key ? 'text-[#2F6B3D]' : 'text-[#9CA3AF]'}`}>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ═══ DESKTOP: Vertical Sidebar (≥ lg) ═══ */}
+      <div className="hidden lg:flex fixed z-50 top-1/2 -translate-y-1/2 left-5 pointer-events-auto">
+        <div className="w-[84px] bg-white/90 backdrop-blur-2xl border border-white/40 shadow-[0_20px_50px_rgba(0,0,0,0.12)] rounded-[2rem] py-6 px-2 flex flex-col items-center justify-center gap-6">
+          {[
+            { key: 'map' as const, icon: MapIcon, label: t.map || 'Карта' },
+            { key: 'market' as const, icon: ShoppingBasket, label: t.market || 'Маркет' },
+            { key: 'admin' as const, icon: Shield, label: 'Админ' },
+            { key: 'profile' as const, icon: User, label: t.profile || 'Профиль' },
+          ].map(({ key, icon: Icon, label }) => (
+            <button key={key} onClick={() => setActiveTab(key)} className={`relative flex flex-col items-center gap-1.5 w-full py-2 rounded-2xl transition-all duration-300 active:scale-95 ${activeTab === key ? 'bg-[#2F6B3D] text-white shadow-lg shadow-[#2F6B3D]/25' : 'text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/8 hover:text-[#2F6B3D]'}`}>
+              <Icon className="size-6" strokeWidth={activeTab === key ? 2.5 : 1.8} />
+              <span className="text-[9px] font-bold uppercase tracking-wider leading-none">{label}</span>
+            </button>
+          ))}
         </div>
       </div>
     </main>

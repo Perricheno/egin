@@ -19,6 +19,8 @@ import { lineString, length as turfLength, midpoint as turfMidpoint } from "@tur
 import { SnapPolygonMode, SnapLineMode, SnapPointMode, SnapDirectSelect } from "mapbox-gl-draw-snap-mode";
 import { KZ_BOUNDS, KZ_CENTER, KZ_ZOOM } from "@/lib/kz-regions";
 import { applyAutoTool, AutoToolType } from "@/lib/turf-tools";
+import { contours } from "d3-contour";
+import { SamWorkerMessage } from "@/workers/sam.worker";
 
 type BaseMapMode = "simple" | "satellite";
 
@@ -58,12 +60,13 @@ const Map = forwardRef<MapRef, MapProps>(
     const languageRef = useRef<PlatformLanguage>(language);
     const massWandActiveRef = useRef(massWandActive);
     const onProcessingStateChangeRef = useRef(onProcessingStateChange);
+    const samWorker = useRef<Worker | null>(null);
+    const [latestEmbedding, setLatestEmbedding] = useState<Float32Array | null>(null);
     const onNotificationRef = useRef(onNotification);
     const onModeChangeRef = useRef(onModeChange);
 
     const [baseMapMode, setBaseMapMode] = useState<BaseMapMode>("simple");
     const [isLayersOpen, setIsLayersOpen] = useState(false);
-    const [boxPos, setBoxPos] = useState<{ start: {x:number, y:number}, current: {x:number, y:number} } | null>(null);
     const t = ui[language] || ui.ru;
 
     useEffect(() => { onNotificationRef.current = onNotification; }, [onNotification]);
@@ -418,7 +421,8 @@ const Map = forwardRef<MapRef, MapProps>(
         center: KZ_CENTER,
         zoom: KZ_ZOOM,
         maxBounds: KZ_BOUNDS,
-      });
+        preserveDrawingBuffer: true,
+      } as any);
 
       mapRef.current = map;
 
@@ -561,82 +565,155 @@ const Map = forwardRef<MapRef, MapProps>(
       }
     }, [drawModeActive, massWandActive]);
 
+    const flashHighlight = (feature: any) => {
+        const map = mapRef.current;
+        if (!map) return;
+        const sourceId = '__wand_highlight__';
+        const layerId = '__wand_highlight_fill__';
+        const outlineId = '__wand_highlight_outline__';
+        // cleanup previous
+        if (map.getLayer(layerId)) map.removeLayer(layerId);
+        if (map.getLayer(outlineId)) map.removeLayer(outlineId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+        
+        map.addSource(sourceId, { type: 'geojson', data: feature });
+        map.addLayer({ id: layerId, type: 'fill', source: sourceId, paint: { 'fill-color': '#22c55e', 'fill-opacity': 0.45 } });
+        map.addLayer({ id: outlineId, type: 'line', source: sourceId, paint: { 'line-color': '#16a34a', 'line-width': 3, 'line-opacity': 1 } });
+        
+        // Pulse animation: flash 3 times then remove
+        let count = 0;
+        const interval = setInterval(() => {
+            count++;
+            const opacity = count % 2 === 0 ? 0.45 : 0.1;
+            try { map.setPaintProperty(layerId, 'fill-opacity', opacity); } catch {}
+            if (count >= 6) {
+                clearInterval(interval);
+                setTimeout(() => {
+                    try {
+                        if (map.getLayer(layerId)) map.removeLayer(layerId);
+                        if (map.getLayer(outlineId)) map.removeLayer(outlineId);
+                        if (map.getSource(sourceId)) map.removeSource(sourceId);
+                    } catch {}
+                }, 500);
+            }
+        }, 300);
+    };
+
     const handleWandClick = async (e: React.MouseEvent) => {
         if (e.button !== 0) return;
+        const map = mapRef.current;
         const rect = mapContainer.current?.getBoundingClientRect();
-        if (!rect || !mapRef.current) return;
-        
+        if (!rect || !map) return;
+
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        const clickedLngLat = mapRef.current.unproject([x, y]);
+        const lngLat = map.unproject([x, y]);
 
         if (onProcessingStateChangeRef.current) onProcessingStateChangeRef.current(true);
-        if (onNotificationRef.current) onNotificationRef.current('Локализация поля в кадастре OSM...', 'warning');
+        if (onNotificationRef.current) onNotificationRef.current('Поиск поля в OSM...', 'warning');
 
         try {
-            const point = turf.point([clickedLngLat.lng, clickedLngLat.lat]);
-            const buffered = turf.buffer(point, 0.05, { units: 'kilometers' });
-            const bbox = turf.bbox(buffered);
+            const point = turf.point([lngLat.lng, lngLat.lat]);
+            const buffered = turf.buffer(point, 0.5, { units: 'kilometers' });
+            const bbox = turf.bbox(buffered!);
             const [w, s, eB, n] = bbox;
 
-            const query = `[out:json][timeout:25];(way["landuse"~"farmland|meadow|orchard|vineyard|allotments|residential|commercial|industrial"](${s},${w},${n},${eB});relation["landuse"~"farmland|meadow|orchard|vineyard|allotments|residential|commercial|industrial"](${s},${w},${n},${eB});way["natural"~"grassland|scrub|wood"](${s},${w},${n},${eB});relation["natural"~"grassland|scrub|wood"](${s},${w},${n},${eB}););out geom;`;
-            
-            let res: any;
-            let success = false;
+            const query = `[out:json][timeout:30];(
+              way["landuse"~"farmland|meadow|orchard|vineyard|allotments|grass"](${s},${w},${n},${eB});
+              relation["landuse"~"farmland|meadow|orchard|vineyard|allotments|grass"](${s},${w},${n},${eB});
+              way["natural"~"grassland|scrub"](${s},${w},${n},${eB});
+              way["crop"](${s},${w},${n},${eB});
+            );out geom;`;
+
+            let res: Response | null = null;
             for (let i = 0; i < 3; i++) {
                 try {
                     res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-                    if (res.ok) { success = true; break; }
-                } catch (err) {}
-                if (!success && i < 2) await new Promise(r => setTimeout(r, 1500));
+                    if (res.ok) break;
+                    res = null;
+                } catch { /* retry */ }
+                if (!res && i < 2) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
             }
-            if (!success || !res) throw new Error("API Max Retries");
+            if (!res) throw new Error('Overpass API unavailable');
 
             const data = await res.json();
             let targetFeature: any = null;
-            
-            if (data && data.elements && data.elements.length > 0) {
-                const ways = data.elements.filter((el: any) => el.type === 'way');
-                
-                for (const element of ways) {
-                    if (!element.geometry) continue;
-                    const coords = element.geometry.map((p: any) => [p.lon, p.lat]);
+            let smallestArea = Infinity;
+
+            if (data?.elements?.length > 0) {
+                // --- Process ways ---
+                for (const el of data.elements) {
+                    if (el.type !== 'way' || !el.geometry) continue;
+                    const coords = el.geometry.map((p: any) => [p.lon, p.lat]);
                     if (coords.length < 3) continue;
-                    if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1]) {
+                    if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])
                         coords.push([...coords[0]]);
-                    }
-                    const poly = turf.polygon([coords]);
-                    
-                    if (turf.booleanPointInPolygon(point, poly)) {
-                        targetFeature = poly;
-                        break;
+                    try {
+                        const poly = turf.polygon([coords]);
+                        if (turf.booleanPointInPolygon(point, poly)) {
+                            const a = turf.area(poly);
+                            if (a < smallestArea) { smallestArea = a; targetFeature = poly; }
+                        }
+                    } catch {}
+                }
+
+                // --- Process relations (multipolygons) ---
+                if (!targetFeature) {
+                    for (const el of data.elements) {
+                        if (el.type !== 'relation' || !el.members) continue;
+                        for (const m of el.members) {
+                            if (m.role !== 'outer' || !m.geometry) continue;
+                            const coords = m.geometry.map((p: any) => [p.lon, p.lat]);
+                            if (coords.length < 3) continue;
+                            if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])
+                                coords.push([...coords[0]]);
+                            try {
+                                const poly = turf.polygon([coords]);
+                                if (turf.booleanPointInPolygon(point, poly)) {
+                                    const a = turf.area(poly);
+                                    if (a < smallestArea) { smallestArea = a; targetFeature = poly; }
+                                }
+                            } catch {}
+                        }
                     }
                 }
-                
-                if (!targetFeature && ways.length > 0) {
-                   const element = ways[0];
-                   const coords = element.geometry.map((p: any) => [p.lon, p.lat]);
-                   coords.push([...coords[0]]);
-                   targetFeature = turf.polygon([coords]);
+
+                // --- Fallback: nearest field ---
+                if (!targetFeature) {
+                    let nearestDist = Infinity;
+                    for (const el of data.elements) {
+                        if (el.type !== 'way' || !el.geometry) continue;
+                        const coords = el.geometry.map((p: any) => [p.lon, p.lat]);
+                        if (coords.length < 3) continue;
+                        if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])
+                            coords.push([...coords[0]]);
+                        try {
+                            const poly = turf.polygon([coords]);
+                            const d = turf.distance(point, turf.centroid(poly));
+                            if (d < nearestDist) { nearestDist = d; targetFeature = poly; }
+                        } catch {}
+                    }
                 }
 
                 if (targetFeature && drawRef.current) {
                     drawRef.current.add(targetFeature);
+                    flashHighlight(targetFeature);
                 }
             }
-            
+
             if (targetFeature) {
-                if (onNotificationRef.current) onNotificationRef.current(`Поле успешно определено!`, 'success');
+                if (onNotificationRef.current) onNotificationRef.current(
+                    `Поле определено! (${(smallestArea / 10000).toFixed(1)} га)`, 'success');
             } else {
-                if (onNotificationRef.current) onNotificationRef.current('В данной точке полей в базе OSM не найдено.', 'warning');
+                if (onNotificationRef.current) onNotificationRef.current(
+                    'Полей в базе OSM в радиусе 500м не найдено.', 'warning');
             }
         } catch (err) {
             console.error(err);
-            if (onNotificationRef.current) onNotificationRef.current('Сбой запроса Overpass после 3 попыток.', 'error');
+            if (onNotificationRef.current) onNotificationRef.current(
+                'Сбой Overpass API. Попробуйте снова.', 'error');
         } finally {
             if (onProcessingStateChangeRef.current) onProcessingStateChangeRef.current(false);
-            if (onModeChangeRef.current) onModeChangeRef.current('simple_select');
-            if (drawRef.current) drawRef.current.changeMode('simple_select');
         }
     };
 
