@@ -36,6 +36,11 @@ export class CreateFarmPlotDto {
   @IsNotEmpty()
   cropType: string;
 
+  @ApiPropertyOptional({ example: '#ff0000' })
+  @IsOptional()
+  @IsString()
+  fillColor?: string;
+
   @ApiProperty({ example: 2024 })
   @IsNumber()
   seasonYear: number;

@@ -46,6 +46,9 @@ export class FarmPlot {
   @Column({ nullable: true })
   cropType: string; // Temporarily string, until Crop module is done
 
+  @Column({ nullable: true })
+  fillColor?: string;
+
   @Column()
   seasonYear: number;
 

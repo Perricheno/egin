@@ -15,7 +15,10 @@ import { mapboxGlDrawTheme } from "./draw-theme";
 import { PlatformLanguage, ui } from "@/lib/i18n";
 import * as turf from "@turf/turf";
 import { lineString, length as turfLength, midpoint as turfMidpoint } from "@turf/turf";
+// @ts-ignore
+import { SnapPolygonMode, SnapLineMode, SnapPointMode, SnapDirectSelect } from "mapbox-gl-draw-snap-mode";
 import { KZ_BOUNDS, KZ_CENTER, KZ_ZOOM } from "@/lib/kz-regions";
+import { applyAutoTool, AutoToolType } from "@/lib/turf-tools";
 
 type BaseMapMode = "simple" | "satellite";
 
@@ -28,6 +31,9 @@ interface MapProps {
   onPlotClick?: (plot: any) => void;
   onModeChange?: (mode: string) => void;
   onMeasurement?: (val: string | null) => void;
+  massWandActive?: boolean;
+  onProcessingStateChange?: (processing: boolean) => void;
+  onNotification?: (msg: string, type: 'error' | 'success' | 'warning') => void;
 }
 
 export interface MapRef {
@@ -37,21 +43,31 @@ export interface MapRef {
   changeDrawMode: (mode: string) => void;
   deleteSelectedDraw: () => void;
   getSelectedGeometry: () => any;
+  executeAutoTool: (tool: AutoToolType) => void;
 }
 
 const OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 
 const Map = forwardRef<MapRef, MapProps>(
-  ({ onGeometrySelected, drawModeActive, rulerModeActive, language, showMeasurements, onPlotClick, onModeChange, onMeasurement }, ref) => {
+  ({ onGeometrySelected, drawModeActive, rulerModeActive, language, showMeasurements, onPlotClick, onModeChange, onMeasurement, massWandActive, onProcessingStateChange, onNotification }, ref) => {
     const mapContainer = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const drawRef = useRef<MapboxDraw | null>(null);
     const markerRef = useRef<maplibregl.Marker | null>(null);
     const onGeometrySelectedRef = useRef(onGeometrySelected);
     const languageRef = useRef<PlatformLanguage>(language);
+    const massWandActiveRef = useRef(massWandActive);
+    const onProcessingStateChangeRef = useRef(onProcessingStateChange);
+    const onNotificationRef = useRef(onNotification);
+    const onModeChangeRef = useRef(onModeChange);
+
     const [baseMapMode, setBaseMapMode] = useState<BaseMapMode>("simple");
     const [isLayersOpen, setIsLayersOpen] = useState(false);
+    const [boxPos, setBoxPos] = useState<{ start: {x:number, y:number}, current: {x:number, y:number} } | null>(null);
     const t = ui[language] || ui.ru;
+
+    useEffect(() => { onNotificationRef.current = onNotification; }, [onNotification]);
+    useEffect(() => { onModeChangeRef.current = onModeChange; }, [onModeChange]);
 
     useEffect(() => {
       onGeometrySelectedRef.current = onGeometrySelected;
@@ -60,6 +76,14 @@ const Map = forwardRef<MapRef, MapProps>(
     useEffect(() => {
       languageRef.current = language;
     }, [language]);
+
+    useEffect(() => {
+      massWandActiveRef.current = massWandActive;
+    }, [massWandActive]);
+
+    useEffect(() => {
+      onProcessingStateChangeRef.current = onProcessingStateChange;
+    }, [onProcessingStateChange]);
 
     const shouldKeepSymbolLayer = (layer: maplibregl.LayerSpecification) => {
       const layerId = layer.id.toLowerCase();
@@ -213,6 +237,7 @@ const Map = forwardRef<MapRef, MapProps>(
                 id: plot.id,
                 cropType: plot.cropType,
                 title: plot.title,
+                fillColor: plot.fillColor || null
               },
               geometry,
             };
@@ -235,21 +260,25 @@ const Map = forwardRef<MapRef, MapProps>(
           source: "farm-plots",
           paint: {
             "fill-color": [
-              "match",
-              ["get", "cropType"],
-              "Арбуз", "#2F6B3D", "Қарбыз", "#2F6B3D", "Watermelon", "#2F6B3D",
-              "Картофель", "#C6A85E", "Картоп", "#C6A85E", "Potato", "#C6A85E",
-              "Пшеница", "#A7B84B", "Бидай", "#A7B84B", "Wheat", "#A7B84B",
-              "Кукуруза", "#D4A017", "Corn", "#D4A017",
-              "Помидоры", "#C0392B", "Tomato", "#C0392B",
-              "Лук", "#8E44AD", "Onion", "#8E44AD",
-              "Морковь", "#E67E22", "Carrot", "#E67E22",
-              "Подсолнечник", "#F1C40F", "Sunflower", "#F1C40F",
-              "Рис", "#1ABC9C", "Rice", "#1ABC9C",
-              "Ячмень", "#27AE60", "Barley", "#27AE60",
-              "Хлопок", "#BDC3C7", "Cotton", "#BDC3C7",
-              "Свёкла", "#9B59B6", "Beet", "#9B59B6",
-              "#888",
+              "coalesce",
+              ["get", "fillColor"],
+              [
+                "match",
+                ["get", "cropType"],
+                "Арбуз", "#2F6B3D", "Қарбыз", "#2F6B3D", "Watermelon", "#2F6B3D",
+                "Картофель", "#C6A85E", "Картоп", "#C6A85E", "Potato", "#C6A85E",
+                "Пшеница", "#A7B84B", "Бидай", "#A7B84B", "Wheat", "#A7B84B",
+                "Кукуруза", "#D4A017", "Corn", "#D4A017",
+                "Помидоры", "#C0392B", "Tomato", "#C0392B",
+                "Лук", "#8E44AD", "Onion", "#8E44AD",
+                "Морковь", "#E67E22", "Carrot", "#E67E22",
+                "Подсолнечник", "#F1C40F", "Sunflower", "#F1C40F",
+                "Рис", "#1ABC9C", "Rice", "#1ABC9C",
+                "Ячмень", "#27AE60", "Barley", "#27AE60",
+                "Хлопок", "#BDC3C7", "Cotton", "#BDC3C7",
+                "Свёкла", "#9B59B6", "Beet", "#9B59B6",
+                "#888"
+              ]
             ],
             "fill-opacity": 0.4,
           },
@@ -317,14 +346,18 @@ const Map = forwardRef<MapRef, MapProps>(
       const map = mapRef.current;
       if (!map) return;
       if (!navigator.geolocation) {
-        alert(t.browseNoGeo || 'No geoloc');
+        if (onNotificationRef.current) onNotificationRef.current(t.browseNoGeo || 'No geoloc', 'error');
+        else alert(t.browseNoGeo || 'No geoloc');
         return;
       }
       navigator.geolocation.getCurrentPosition(
         ({ coords }) => {
           map.flyTo({ center: [coords.longitude, coords.latitude], zoom: 15, essential: true });
         },
-        () => { alert(t.noLocation || 'No loc'); },
+        () => { 
+            if (onNotificationRef.current) onNotificationRef.current(t.noLocation || 'No loc', 'error');
+            else alert(t.noLocation || 'No loc'); 
+        },
         { enableHighAccuracy: true, timeout: 10000 }
       );
     };
@@ -343,7 +376,9 @@ const Map = forwardRef<MapRef, MapProps>(
           if (mode === 'direct_select') {
             const selected = drawRef.current.getSelectedIds();
             if (selected.length > 0) drawRef.current.changeMode(mode, { featureId: selected[0] });
-            else alert('Сначала выберите объект стрелкой для редактирования узлов');
+            else {
+                if (onNotificationRef.current) onNotificationRef.current('Сначала выберите объект стрелкой для редактирования узлов', 'warning');
+            }
           } else drawRef.current.changeMode(mode);
         }
       },
@@ -357,6 +392,19 @@ const Map = forwardRef<MapRef, MapProps>(
            if (data.features.length > 0) return data.features[0].geometry;
         }
         return null;
+      },
+      executeAutoTool: (tool: AutoToolType) => {
+        if (!drawRef.current) return;
+        const selected = drawRef.current.getSelected();
+        if (selected.features.length === 0) {
+          if (onNotificationRef.current) onNotificationRef.current('Сначала выделите объекты (Указателем) для применения инструмента.', 'warning');
+          return;
+        }
+        const newFeatures = applyAutoTool(tool, selected.features);
+        if (newFeatures && newFeatures.length > 0) {
+          drawRef.current.trash(); // remove originals
+          newFeatures.forEach(f => drawRef.current?.add(f));
+        }
       }
     }));
 
@@ -376,6 +424,20 @@ const Map = forwardRef<MapRef, MapProps>(
 
       const draw = new MapboxDraw({
         displayControlsDefault: false,
+        modes: {
+          ...MapboxDraw.modes,
+          draw_polygon: SnapPolygonMode,
+          draw_line_string: SnapLineMode,
+          draw_point: SnapPointMode,
+          direct_select: SnapDirectSelect
+        },
+        userProperties: true, // Required for snap-mode
+        // @ts-ignore - mapbox-gl-draw-snap-mode adds these custom properties
+        snap: true,
+        snapOptions: {
+          snapPx: 15,
+          snapToMidPoints: true
+        },
         styles: mapboxGlDrawTheme as any,
       });
 
@@ -482,16 +544,143 @@ const Map = forwardRef<MapRef, MapProps>(
     useEffect(() => { applyMeasurementVisibility(); }, [showMeasurements]);
 
     useEffect(() => {
-      const canvas = mapRef.current?.getCanvas();
-      if (canvas) {
+      const map = mapRef.current;
+      const canvas = map?.getCanvas();
+      if (!map || !canvas) return;
+      
+      if (massWandActive) {
+        map.dragPan.disable();
+        map.scrollZoom.disable();
+        map.doubleClickZoom.disable();
+        canvas.style.cursor = 'crosshair';
+      } else {
+        map.dragPan.enable();
+        map.scrollZoom.enable();
+        map.doubleClickZoom.enable();
         canvas.style.cursor = drawModeActive ? "crosshair" : "";
       }
-    }, [drawModeActive]);
+    }, [drawModeActive, massWandActive]);
+
+    const handleBoxMouseDown = (e: React.MouseEvent) => {
+        if (e.button !== 0) return; // left click only
+        const rect = mapContainer.current?.getBoundingClientRect();
+        if (!rect) return;
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        setBoxPos({ start: {x, y}, current: {x, y} });
+    };
+
+    const handleBoxMouseMove = (e: React.MouseEvent) => {
+        if (!boxPos) return;
+        const rect = mapContainer.current?.getBoundingClientRect();
+        if (!rect) return;
+        setBoxPos({ ...boxPos, current: { x: e.clientX - rect.left, y: e.clientY - rect.top } });
+    };
+
+    const handleBoxMouseUp = async () => {
+        if (!boxPos) return;
+        const { start, current } = boxPos;
+        setBoxPos(null);
+        
+        if (Math.abs(current.x - start.x) < 5 && Math.abs(current.y - start.y) < 5) {
+             if (onNotificationRef.current) onNotificationRef.current('Нарисуйте рамку, потянув мышкой по карте.', 'warning');
+             return;
+        }
+
+        const map = mapRef.current;
+        if (!map) return;
+
+        const p1 = map.unproject([start.x, start.y]);
+        const p2 = map.unproject([current.x, current.y]);
+
+        const minLng = Math.min(p1.lng, p2.lng);
+        const maxLng = Math.max(p1.lng, p2.lng);
+        const minLat = Math.min(p1.lat, p2.lat);
+        const maxLat = Math.max(p1.lat, p2.lat);
+
+        if (onProcessingStateChangeRef.current) onProcessingStateChangeRef.current(true);
+        if (onNotificationRef.current) onNotificationRef.current('Идет захват земельного кадастра OSM...', 'warning');
+        
+        try {
+            const query = `[out:json][timeout:25];(way["landuse"~"farmland|meadow|orchard|vineyard|grass|commercial|industrial|residential"](${minLat},${minLng},${maxLat},${maxLng});relation["landuse"~"farmland|meadow|orchard|vineyard|grass"](${minLat},${minLng},${maxLat},${maxLng}););out geom;`;
+            
+            let res: any;
+            let success = false;
+            for (let i = 0; i < 3; i++) {
+                try {
+                    res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+                    if (res.ok) { success = true; break; }
+                } catch (err) {}
+                if (!success && i < 2) await new Promise(r => setTimeout(r, 1500));
+            }
+            if (!success || !res) throw new Error("API Max Retries");
+
+            const data = await res.json();
+            let addedCount = 0;
+            if (data && data.elements && data.elements.length > 0) {
+                const ways = data.elements.filter((el: any) => el.type === 'way');
+                for (const element of ways) {
+                    if (!element.geometry) continue;
+                    const coords = element.geometry.map((p: any) => [p.lon, p.lat]);
+                    if (coords.length < 3) continue;
+                    if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1]) {
+                        coords.push([...coords[0]]);
+                    }
+                    const feature = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [coords] } };
+                    
+                    if (drawRef.current) {
+                        drawRef.current.add(feature as any);
+                        addedCount++;
+                    }
+                }
+            }
+            
+            if (addedCount > 0) {
+                if (onNotificationRef.current) onNotificationRef.current(`Успешно захвачено ${addedCount} участков!`, 'success');
+            } else {
+                if (onNotificationRef.current) onNotificationRef.current('В рамке не найдено размеченных полигонов.', 'warning');
+            }
+        } catch (err) {
+            console.error(err);
+            if (onNotificationRef.current) onNotificationRef.current('Сбой запроса Overpass после 3 попыток.', 'error');
+        } finally {
+            if (onProcessingStateChangeRef.current) onProcessingStateChangeRef.current(false);
+            if (onModeChangeRef.current) onModeChangeRef.current('simple_select');
+            if (drawRef.current) drawRef.current.changeMode('simple_select');
+        }
+    };
 
     return (
       <div className="relative h-full w-full">
+        {massWandActive && (
+          <div
+            className="absolute inset-0 z-10 cursor-crosshair select-none"
+            onMouseDown={handleBoxMouseDown}
+            onMouseMove={handleBoxMouseMove}
+            onMouseUp={handleBoxMouseUp}
+            onMouseLeave={() => {
+               if (boxPos) handleBoxMouseUp();
+               else setBoxPos(null);
+            }}
+          >
+            {boxPos && (
+              <div
+                style={{
+                  position: 'absolute',
+                  border: '2px solid rgba(59, 130, 246, 0.8)',
+                  backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                  left: Math.min(boxPos.start.x, boxPos.current.x),
+                  top: Math.min(boxPos.start.y, boxPos.current.y),
+                  width: Math.abs(boxPos.current.x - boxPos.start.x),
+                  height: Math.abs(boxPos.current.y - boxPos.start.y),
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+          </div>
+        )}
         <div ref={mapContainer} className="h-full w-full" />
-        <div className="absolute bottom-40 left-6 z-20">
+        <div className="absolute bottom-40 left-6 z-20 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] lg:left-[120px] lg:bottom-10">
           <button
             type="button"
             onClick={() => setIsLayersOpen((open) => !open)}

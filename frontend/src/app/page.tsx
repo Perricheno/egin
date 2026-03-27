@@ -12,7 +12,8 @@ import AuthView from "@/components/ui/auth-view";
 import { cropLabels, cropList, PlatformLanguage, ui } from "@/lib/i18n";
 import { area as turfArea } from "@turf/turf";
 import { KZ_REGIONS, KZ_CENTER, KZ_ZOOM, getRegionName, KzRegion, KzDistrict } from "@/lib/kz-regions";
-import { Map as MapIcon, ShoppingBasket, User, Navigation2, Plus, Shield, PenTool, Eraser, MousePointer2, Focus, Hexagon, Spline, MapPin, Save, RotateCcw, Ruler } from "lucide-react";
+import { Map as MapIcon, ShoppingBasket, User, Navigation2, Plus, Shield, PenTool, Eraser, MousePointer2, Focus, Hexagon, Spline, MapPin, Save, RotateCcw, Ruler, Wand2, Sparkles, Loader2, Grid } from "lucide-react";
+import { AutoToolType } from "@/lib/turf-tools";
 
 export default function Home() {
   const mapRef = useRef<MapRef>(null);
@@ -33,12 +34,15 @@ export default function Home() {
   const [drawMode, setDrawMode] = useState<string>("simple_select");
   const [measurement, setMeasurement] = useState<string | null>(null);
   const [isRulerActive, setIsRulerActive] = useState(false);
+  const [isProcessingWand, setIsProcessingWand] = useState(false);
+  const [notification, setNotification] = useState<{msg: string, type: 'error' | 'warning' | 'success'} | null>(null);
 
   // Drawing and Submission State
   const [isPoleOpen, setIsPoleOpen] = useState(false);
   const [drawnGeometry, setDrawnGeometry] = useState<any>(null);
   const [fieldName, setFieldName] = useState("Орёл 22");
   const [selectedCrop, setSelectedCrop] = useState<string>("");
+  const [fillColor, setFillColor] = useState<string>("#888888");
 
   // Edit plot state
   const [editPlotData, setEditPlotData] = useState<any>(null);
@@ -66,7 +70,8 @@ export default function Home() {
   const handlePlotClick = (plot: any) => {
     setEditPlotData(plot);
     setEditTitle(plot.title || "");
-    setEditCrop(plot.cropType || cropLabels[language].watermelon);
+    setEditCrop(plot.cropType || (cropLabels[language] as any).watermelon);
+    setFillColor(plot.fillColor || "#888888");
     setIsEditModalOpen(true);
   };
 
@@ -78,7 +83,7 @@ export default function Home() {
       const res = await fetch(`http://localhost:3008/farm-plots/${editPlotData.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ title: editTitle, cropType: editCrop })
+        body: JSON.stringify({ title: editTitle, cropType: editCrop, fillColor })
       });
       if (res.ok) {
         setIsEditModalOpen(false);
@@ -93,9 +98,14 @@ export default function Home() {
     }
   };
 
+  const showNotification = (msg: string, type: 'error' | 'warning' | 'success') => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
+
   const deletePlot = async () => {
     if (!editPlotData) return;
-    if (!confirm(t.deletePlotConfirm || "Вы уверены, что хотите удалить этот участок?")) return;
+    if (!confirm((t as any).deletePlotConfirm || "Вы уверены, что хотите удалить этот участок?")) return;
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem("agro_token");
@@ -141,6 +151,7 @@ export default function Home() {
           areaSizeHectares: Number(areaSizeHectares.toFixed(2)),
           geometry: drawnGeometry,
           cropType: selectedCrop,
+          fillColor,
           seasonYear: 2024
         })
       });
@@ -164,7 +175,18 @@ export default function Home() {
 
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-[#EAF3E7] font-sans">
-      {!isLoggedIn && <AuthView onSuccess={handleAuthSuccess} language={language} />}
+      {!isLoggedIn && <AuthView onSuccess={handleAuthSuccess} {...({language} as any)} />}
+
+      {/* Dynamic Toast Notifications */}
+      {notification && (
+        <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl font-black text-sm flex items-center gap-3 animate-in fade-in slide-in-from-top-10 ${
+          notification.type === 'error' ? 'bg-red-500 text-white' : 
+          notification.type === 'warning' ? 'bg-yellow-500 text-white' : 
+          'bg-[#2F6B3D] text-white'
+        }`}>
+          {notification.type === 'error' ? '❌' : notification.type === 'warning' ? '⚠️' : '✅'} {notification.msg}
+        </div>
+      )}
 
       {/* Map Background */}
       <div className={`absolute inset-0 z-0 transition-opacity duration-300 ${activeTab === 'map' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
@@ -175,11 +197,14 @@ export default function Home() {
           onMeasurement={setMeasurement}
           language={language}
           showMeasurements={isRulerActive}
+          massWandActive={drawMode === 'mass_magic_wand'}
+          onProcessingStateChange={setIsProcessingWand}
+          onNotification={showNotification}
         />
       </div>
 
-      {activeTab === 'market' && <MarketView language={language} />}
-      {activeTab === 'profile' && <ProfileView language={language} />}
+      {activeTab === 'market' && <MarketView {...({language} as any)} />}
+      {activeTab === 'profile' && <ProfileView {...({language} as any)} />}
       {activeTab === 'admin' && <AdminView />}
 
       {/* Map UI */}
@@ -202,8 +227,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Top-Left Dynamic Filter Panel */}
-        <div className="absolute top-6 left-6 z-10 w-64 pointer-events-auto">
+        {/* Top-Left Dynamic Filter Panel - Repositioned for Responsive Sidebar */}
+        <div className="absolute top-6 left-6 z-10 w-64 pointer-events-auto transition-all duration-500 lg:left-[120px]">
           <Card className="shadow-lg border-none bg-white/95 backdrop-blur-md rounded-[1.5rem] p-0 max-h-[55vh] overflow-hidden flex flex-col">
             <div className="flex border-b border-[#F0F5EE]">
               <button onClick={() => setFilterTab("region")} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-wider transition-all ${filterTab === 'region' ? 'text-[#2F6B3D] border-b-2 border-[#2F6B3D]' : 'text-[#2F6B3D]/30'}`}>
@@ -285,34 +310,85 @@ export default function Home() {
 
         {/* Top-Right Professional GIS Toolbar */}
         <div className="absolute top-6 right-6 z-10 flex flex-col gap-4 pointer-events-auto">
-          <div className="bg-white/95 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-3xl p-3 w-16 flex flex-col items-center border border-white/40">
+          <div className="group bg-white/95 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[24px] p-3 flex flex-col items-start border border-white/40 transition-all duration-300 ease-out w-[64px] hover:w-[210px] overflow-hidden">
             {/* GROUP: Навигация */}
-            <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 mt-1">Вид</span>
-            <Button size="icon" variant="ghost" className="size-10 rounded-xl transition-all text-[#2F6B3D] hover:bg-green-50 mb-1" onClick={() => mapRef.current?.focusCurrentLocation()} title={t.noLocation || 'Где я?'}><Navigation2 className="size-5" /></Button>
-            <Button size="icon" variant="ghost" onClick={() => setIsRulerActive(!isRulerActive)} className={`size-10 rounded-xl transition-all ${isRulerActive ? 'bg-[#2F6B3D] text-white' : 'text-[#2F6B3D] hover:bg-green-50'}`} title="Линейки измерений"><Ruler className="size-5" /></Button>
+            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
+              <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 mt-1 whitespace-nowrap">Вид</span>
+            </div>
+            
+            <Button variant="ghost" className="h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 text-[#2F6B3D] hover:bg-green-50" onClick={() => mapRef.current?.focusCurrentLocation()} title={t.noLocation || 'Где я?'}>
+              <Navigation2 className="size-5 shrink-0" />
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Моя локация</span>
+            </Button>
+            
+            <Button variant="ghost" onClick={() => setIsRulerActive(!isRulerActive)} className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden ${isRulerActive ? 'bg-[#2F6B3D] text-white' : 'text-[#2F6B3D] hover:bg-green-50'}`} title="Линейки измерений">
+              <Ruler className="size-5 shrink-0" />
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Измерения</span>
+            </Button>
 
-            <div className="h-px w-10 bg-[#2F6B3D]/10 my-3" />
+            <div className="h-px w-10 group-hover:w-full bg-[#2F6B3D]/10 my-3 transition-all duration-300" />
 
             {/* GROUP: Выделение */}
-            <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2">Курсор</span>
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all mb-1 ${drawMode === 'simple_select' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('simple_select')} title="Выбрать объект (Select)"><MousePointer2 className="size-5" /></Button>
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all ${drawMode === 'direct_select' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('direct_select')} title="Редактировать узлы (Direct Select)"><Focus className="size-5" /></Button>
+            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
+               <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 whitespace-nowrap">Курсор</span>
+            </div>
+            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'simple_select' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('simple_select'); mapRef.current?.changeDrawMode('simple_select'); }} title="Выбрать объект (Select)">
+              <MousePointer2 className="size-5 shrink-0" />
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Указатель</span>
+            </Button>
+            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden ${drawMode === 'direct_select' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('direct_select'); mapRef.current?.changeDrawMode('direct_select'); }} title="Редактировать узлы (Direct Select)">
+              <Focus className="size-5 shrink-0" />
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Правка узлов</span>
+            </Button>
 
-            <div className="h-px w-10 bg-[#2F6B3D]/10 my-3" />
+            <div className="h-px w-10 group-hover:w-full bg-[#2F6B3D]/10 my-3 transition-all duration-300" />
 
-            {/* GROUP: Рисование */}
-            <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2">Эскиз</span>
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all mb-1 ${drawMode === 'draw_polygon' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('draw_polygon')} title="Нарисовать полигон (Поле)"><Hexagon className="size-5" /></Button>
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all mb-1 ${drawMode === 'draw_line_string' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('draw_line_string')} title="Нарисовать линию (Дорога/Канал)"><Spline className="size-5" /></Button>
-            <Button size="icon" variant="ghost" className={`size-10 rounded-xl transition-all ${drawMode === 'draw_point' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => mapRef.current?.changeDrawMode('draw_point')} title="Поставить метку"><MapPin className="size-5" /></Button>
+            {/* GROUP: Создание */}
+            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
+               <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 whitespace-nowrap">Создание</span>
+            </div>
+            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'mass_magic_wand' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('mass_magic_wand'); mapRef.current?.changeDrawMode('simple_select'); }} title="Массовый захват (Box)">
+              {isProcessingWand ? <Loader2 className="size-5 shrink-0 animate-spin"/> : <Sparkles className="size-5 shrink-0" />}
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Масс. захват BBox</span>
+            </Button>
+            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'draw_polygon' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('draw_polygon'); mapRef.current?.changeDrawMode('draw_polygon'); }} title="Полигон">
+              <Hexagon className="size-5 shrink-0" />
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Полигон (Поле)</span>
+            </Button>
+            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'draw_line_string' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('draw_line_string'); mapRef.current?.changeDrawMode('draw_line_string'); }} title="Нарисовать линию (Дорога/Канал)">
+              <Spline className="size-5 shrink-0" />
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Линия (Дорога)</span>
+            </Button>
+            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden ${drawMode === 'draw_point' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('draw_point'); mapRef.current?.changeDrawMode('draw_point'); }} title="Поставить метку">
+              <MapPin className="size-5 shrink-0" />
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Метка</span>
+            </Button>
 
-            <div className="h-px w-10 bg-[#2F6B3D]/10 my-3" />
+            <div className="h-px w-10 group-hover:w-full bg-[#2F6B3D]/10 my-3 transition-all duration-300" />
 
+            {/* GROUP: Умные функции */}
+            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
+               <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 whitespace-nowrap">СЕТКА / СОТЫ</span>
+            </div>
+            <Button variant="ghost" className="h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden shadow-sm border border-[#2F6B3D]/20 bg-white text-[#2F6B3D] hover:bg-green-50" onClick={() => mapRef.current?.executeAutoTool('hexGrid_1ha')} title="Сгенерировать соты (Гексагоны) внутри полигона">
+              <Grid className="size-5 shrink-0" />
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-[#2F6B3D]">Создать соты</span>
+            </Button>
+
+            <div className="h-px w-10 group-hover:w-full bg-[#2F6B3D]/10 my-3 transition-all duration-300" />
+            
             {/* GROUP: Действия */}
-            <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2">Очистка</span>
-            <Button size="icon" variant="ghost" className="size-10 rounded-xl text-red-500 hover:bg-red-50 transition-all" onClick={() => mapRef.current?.deleteSelectedDraw()} title="Удалить выбранное"><Eraser className="size-5" /></Button>
+            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
+               <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 whitespace-nowrap">Очистка</span>
+            </div>
+            <Button variant="ghost" className="h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden text-red-500 hover:bg-red-50" onClick={() => mapRef.current?.deleteSelectedDraw()} title="Удалить выбранное">
+              <Eraser className="size-5 shrink-0" />
+              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Удалить объект</span>
+            </Button>
           </div>
         </div>
+
+
 
         {/* Dynamic Measurement Banner - Moved to Bottom to prevent overlap with Languages */}
         {measurement && (
@@ -343,6 +419,10 @@ export default function Home() {
               {cropList.map(c => <option key={c.key} value={(cropLabels[language] as any)[c.key]}>{c.emoji} {(cropLabels[language] as any)[c.key]}</option>)}
             </select>
           </div>
+          <div className="flex flex-col gap-1">
+             <label className="text-[10px] font-black uppercase text-[#2F6B3D]/50 ml-1">Свой цвет заливки (Опционально)</label>
+             <input type="color" className="h-10 w-full rounded-xl cursor-pointer bg-transparent appearance-none border-none p-0" value={fillColor} onChange={(e) => setFillColor(e.target.value)} />
+          </div>
           <div className="rounded-2xl bg-[#F5F9F4] px-4 py-3 text-sm font-bold text-[#2F6B3D] shadow-inner">{t.area || 'Площадь'}: {areaSizeHectares.toFixed(2)} {t.hectares || 'га'}</div>
         </div>
       </ActionModal>
@@ -355,31 +435,48 @@ export default function Home() {
           <select className="h-14 w-full rounded-2xl bg-[#F5F9F4] px-4 font-bold text-[#2F6B3D] shadow-inner focus:outline-none" value={editCrop} onChange={(e) => setEditCrop(e.target.value)}>
             {cropList.map(c => <option key={c.key} value={(cropLabels[language] as any)[c.key]}>{c.emoji} {(cropLabels[language] as any)[c.key]}</option>)}
           </select>
+          <div className="flex items-center justify-between px-2 bg-[#F5F9F4] rounded-2xl h-14 outline-none border-none">
+            <label className="text-xs font-black uppercase text-[#2F6B3D]/50 ml-2">Свой цвет заливки:</label>
+            <input type="color" className="w-12 h-10 border-0 outline-none rounded-lg cursor-pointer bg-transparent p-0 mr-2" value={fillColor} onChange={(e) => setFillColor(e.target.value)} />
+          </div>
           <button onClick={deletePlot} disabled={isSubmitting} className="w-full flex items-center justify-center h-14 bg-red-50 text-red-600 font-bold rounded-2xl border border-red-100 hover:bg-red-100 transition-colors mt-2">
             Удалить участок
           </button>
         </div>
       </ActionModal>
 
-      {/* Bottom Nav Bar */}
-      <div className="absolute bottom-0 left-0 right-0 z-40 pb-6 px-6 pointer-events-auto">
-        <div className="mx-auto max-w-md bg-white/80 backdrop-blur-2xl border border-white/40 shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[2.5rem] h-22 flex items-center justify-around px-2">
-          <button onClick={() => setActiveTab("map")} className={`flex flex-col items-center gap-1 group transition-all ${activeTab === 'map' ? 'text-[#2F6B3D]' : 'text-muted-foreground hover:text-[#2F6B3D]'}`}>
-            <div className={`p-3 rounded-2xl group-active:scale-95 transition-all ${activeTab === 'map' ? 'bg-[#2F6B3D] text-white shadow-lg shadow-green-900/20' : ''}`}><MapIcon className="size-6" /></div>
-            <span className="text-[10px] font-black uppercase tracking-widest">{t.map || 'Карта'}</span>
+      {/* Responsive Smart Navigation Bar */}
+      <div className="absolute z-50 pointer-events-auto transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] bottom-6 left-6 right-6 lg:bottom-auto lg:top-1/2 lg:-translate-y-1/2 lg:left-6 lg:right-auto">
+        <div className="w-full lg:w-[88px] h-full mx-auto max-w-md lg:max-w-none bg-white/90 backdrop-blur-2xl border border-white/40 shadow-[0_30px_60px_rgba(0,0,0,0.15)] rounded-[2.5rem] p-3 lg:py-8 lg:px-3 flex flex-row lg:flex-col items-center justify-around lg:justify-center gap-2 lg:gap-8">
+          
+          <button onClick={() => setActiveTab("map")} className={`flex flex-col items-center gap-2 group transition-all w-16 lg:w-full ${activeTab === 'map' ? 'text-[#2F6B3D] scale-105' : 'text-muted-foreground hover:text-[#2F6B3D] hover:scale-105'}`}>
+            <div className={`p-4 xl:p-4 rounded-[1.5rem] group-active:scale-95 transition-all w-full flex justify-center ${activeTab === 'map' ? 'bg-[#2F6B3D] text-white shadow-xl shadow-[#2F6B3D]/30' : 'bg-transparent text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/10'}`}>
+               <MapIcon className="size-6 lg:size-7" strokeWidth={activeTab === 'map' ? 2.5 : 2} />
+            </div>
+            <span className={`text-[9.5px] font-black uppercase tracking-widest transition-colors ${activeTab === 'map' ? 'text-[#2F6B3D]' : 'opacity-0 lg:opacity-100 group-hover:opacity-100'}`}>{t.map || 'Карта'}</span>
           </button>
-          <button onClick={() => setActiveTab("market")} className={`flex flex-col items-center gap-1 group transition-all ${activeTab === 'market' ? 'text-[#2F6B3D]' : 'text-muted-foreground hover:text-[#2F6B3D]'}`}>
-            <div className={`p-3 rounded-2xl group-active:scale-95 transition-all ${activeTab === 'market' ? 'bg-[#2F6B3D] text-white shadow-lg shadow-green-900/20' : ''}`}><ShoppingBasket className="size-6" /></div>
-            <span className="text-[10px] font-black uppercase tracking-widest">{t.market || 'Рынок'}</span>
+          
+          <button onClick={() => setActiveTab("market")} className={`flex flex-col items-center gap-2 group transition-all w-16 lg:w-full ${activeTab === 'market' ? 'text-[#2F6B3D] scale-105' : 'text-muted-foreground hover:text-[#2F6B3D] hover:scale-105'}`}>
+            <div className={`p-4 xl:p-4 rounded-[1.5rem] group-active:scale-95 transition-all w-full flex justify-center ${activeTab === 'market' ? 'bg-[#2F6B3D] text-white shadow-xl shadow-[#2F6B3D]/30' : 'bg-transparent text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/10'}`}>
+               <ShoppingBasket className="size-6 lg:size-7" strokeWidth={activeTab === 'market' ? 2.5 : 2} />
+            </div>
+            <span className={`text-[9.5px] font-black uppercase tracking-widest transition-colors ${activeTab === 'market' ? 'text-[#2F6B3D]' : 'opacity-0 lg:opacity-100 group-hover:opacity-100'}`}>{t.market || 'Рынок'}</span>
           </button>
-          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center gap-1 group transition-all ${activeTab === 'admin' ? 'text-[#2F6B3D]' : 'text-muted-foreground hover:text-[#2F6B3D]'}`}>
-            <div className={`p-3 rounded-2xl group-active:scale-95 transition-all ${activeTab === 'admin' ? 'bg-[#2F6B3D] text-white shadow-lg shadow-green-900/20' : ''}`}><Shield className="size-6" /></div>
-            <span className="text-[10px] font-black uppercase tracking-widest">Админка</span>
+          
+          <button onClick={() => setActiveTab("admin")} className={`flex flex-col items-center gap-2 group transition-all w-16 lg:w-full ${activeTab === 'admin' ? 'text-[#2F6B3D] scale-105' : 'text-muted-foreground hover:text-[#2F6B3D] hover:scale-105'}`}>
+            <div className={`p-4 xl:p-4 rounded-[1.5rem] group-active:scale-95 transition-all w-full flex justify-center ${activeTab === 'admin' ? 'bg-[#2F6B3D] text-white shadow-xl shadow-[#2F6B3D]/30' : 'bg-transparent text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/10'}`}>
+               <Shield className="size-6 lg:size-7" strokeWidth={activeTab === 'admin' ? 2.5 : 2} />
+            </div>
+            <span className={`text-[9.5px] font-black uppercase tracking-widest transition-colors ${activeTab === 'admin' ? 'text-[#2F6B3D]' : 'opacity-0 lg:opacity-100 group-hover:opacity-100'}`}>Админка</span>
           </button>
-          <button onClick={() => setActiveTab("profile")} className={`flex flex-col items-center gap-1 group transition-all ${activeTab === 'profile' ? 'text-[#2F6B3D]' : 'text-muted-foreground hover:text-[#2F6B3D]'}`}>
-            <div className={`p-3 rounded-2xl group-active:scale-95 transition-all ${activeTab === 'profile' ? 'bg-[#2F6B3D] text-white shadow-lg shadow-green-900/20' : ''}`}><User className="size-6" /></div>
-            <span className="text-[10px] font-black uppercase tracking-widest">{t.profile || 'Профиль'}</span>
+          
+          <button onClick={() => setActiveTab("profile")} className={`flex flex-col items-center gap-2 group transition-all w-16 lg:w-full ${activeTab === 'profile' ? 'text-[#2F6B3D] scale-105' : 'text-muted-foreground hover:text-[#2F6B3D] hover:scale-105'}`}>
+            <div className={`p-4 xl:p-4 rounded-[1.5rem] group-active:scale-95 transition-all w-full flex justify-center ${activeTab === 'profile' ? 'bg-[#2F6B3D] text-white shadow-xl shadow-[#2F6B3D]/30' : 'bg-transparent text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/10'}`}>
+               <User className="size-6 lg:size-7" strokeWidth={activeTab === 'profile' ? 2.5 : 2} />
+            </div>
+            <span className={`text-[9.5px] font-black uppercase tracking-widest transition-colors ${activeTab === 'profile' ? 'text-[#2F6B3D]' : 'opacity-0 lg:opacity-100 group-hover:opacity-100'}`}>{t.profile || 'Профиль'}</span>
           </button>
+
         </div>
       </div>
     </main>
