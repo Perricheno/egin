@@ -561,48 +561,25 @@ const Map = forwardRef<MapRef, MapProps>(
       }
     }, [drawModeActive, massWandActive]);
 
-    const handleBoxMouseDown = (e: React.MouseEvent) => {
-        if (e.button !== 0) return; // left click only
+    const handleWandClick = async (e: React.MouseEvent) => {
+        if (e.button !== 0) return;
         const rect = mapContainer.current?.getBoundingClientRect();
-        if (!rect) return;
+        if (!rect || !mapRef.current) return;
+        
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        setBoxPos({ start: {x, y}, current: {x, y} });
-    };
-
-    const handleBoxMouseMove = (e: React.MouseEvent) => {
-        if (!boxPos) return;
-        const rect = mapContainer.current?.getBoundingClientRect();
-        if (!rect) return;
-        setBoxPos({ ...boxPos, current: { x: e.clientX - rect.left, y: e.clientY - rect.top } });
-    };
-
-    const handleBoxMouseUp = async () => {
-        if (!boxPos) return;
-        const { start, current } = boxPos;
-        setBoxPos(null);
-        
-        if (Math.abs(current.x - start.x) < 5 && Math.abs(current.y - start.y) < 5) {
-             if (onNotificationRef.current) onNotificationRef.current('Нарисуйте рамку, потянув мышкой по карте.', 'warning');
-             return;
-        }
-
-        const map = mapRef.current;
-        if (!map) return;
-
-        const p1 = map.unproject([start.x, start.y]);
-        const p2 = map.unproject([current.x, current.y]);
-
-        const minLng = Math.min(p1.lng, p2.lng);
-        const maxLng = Math.max(p1.lng, p2.lng);
-        const minLat = Math.min(p1.lat, p2.lat);
-        const maxLat = Math.max(p1.lat, p2.lat);
+        const clickedLngLat = mapRef.current.unproject([x, y]);
 
         if (onProcessingStateChangeRef.current) onProcessingStateChangeRef.current(true);
-        if (onNotificationRef.current) onNotificationRef.current('Идет захват земельного кадастра OSM...', 'warning');
-        
+        if (onNotificationRef.current) onNotificationRef.current('Локализация поля в кадастре OSM...', 'warning');
+
         try {
-            const query = `[out:json][timeout:25];(way["landuse"~"farmland|meadow|orchard|vineyard|grass|commercial|industrial|residential"](${minLat},${minLng},${maxLat},${maxLng});relation["landuse"~"farmland|meadow|orchard|vineyard|grass"](${minLat},${minLng},${maxLat},${maxLng}););out geom;`;
+            const point = turf.point([clickedLngLat.lng, clickedLngLat.lat]);
+            const buffered = turf.buffer(point, 0.05, { units: 'kilometers' });
+            const bbox = turf.bbox(buffered);
+            const [w, s, eB, n] = bbox;
+
+            const query = `[out:json][timeout:25];(way["landuse"~"farmland|meadow|orchard|vineyard|allotments|residential|commercial|industrial"](${s},${w},${n},${eB});relation["landuse"~"farmland|meadow|orchard|vineyard|allotments|residential|commercial|industrial"](${s},${w},${n},${eB});way["natural"~"grassland|scrub|wood"](${s},${w},${n},${eB});relation["natural"~"grassland|scrub|wood"](${s},${w},${n},${eB}););out geom;`;
             
             let res: any;
             let success = false;
@@ -616,9 +593,11 @@ const Map = forwardRef<MapRef, MapProps>(
             if (!success || !res) throw new Error("API Max Retries");
 
             const data = await res.json();
-            let addedCount = 0;
+            let targetFeature: any = null;
+            
             if (data && data.elements && data.elements.length > 0) {
                 const ways = data.elements.filter((el: any) => el.type === 'way');
+                
                 for (const element of ways) {
                     if (!element.geometry) continue;
                     const coords = element.geometry.map((p: any) => [p.lon, p.lat]);
@@ -626,19 +605,30 @@ const Map = forwardRef<MapRef, MapProps>(
                     if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1]) {
                         coords.push([...coords[0]]);
                     }
-                    const feature = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [coords] } };
+                    const poly = turf.polygon([coords]);
                     
-                    if (drawRef.current) {
-                        drawRef.current.add(feature as any);
-                        addedCount++;
+                    if (turf.booleanPointInPolygon(point, poly)) {
+                        targetFeature = poly;
+                        break;
                     }
+                }
+                
+                if (!targetFeature && ways.length > 0) {
+                   const element = ways[0];
+                   const coords = element.geometry.map((p: any) => [p.lon, p.lat]);
+                   coords.push([...coords[0]]);
+                   targetFeature = turf.polygon([coords]);
+                }
+
+                if (targetFeature && drawRef.current) {
+                    drawRef.current.add(targetFeature);
                 }
             }
             
-            if (addedCount > 0) {
-                if (onNotificationRef.current) onNotificationRef.current(`Успешно захвачено ${addedCount} участков!`, 'success');
+            if (targetFeature) {
+                if (onNotificationRef.current) onNotificationRef.current(`Поле успешно определено!`, 'success');
             } else {
-                if (onNotificationRef.current) onNotificationRef.current('В рамке не найдено размеченных полигонов.', 'warning');
+                if (onNotificationRef.current) onNotificationRef.current('В данной точке полей в базе OSM не найдено.', 'warning');
             }
         } catch (err) {
             console.error(err);
@@ -655,29 +645,8 @@ const Map = forwardRef<MapRef, MapProps>(
         {massWandActive && (
           <div
             className="absolute inset-0 z-10 cursor-crosshair select-none"
-            onMouseDown={handleBoxMouseDown}
-            onMouseMove={handleBoxMouseMove}
-            onMouseUp={handleBoxMouseUp}
-            onMouseLeave={() => {
-               if (boxPos) handleBoxMouseUp();
-               else setBoxPos(null);
-            }}
-          >
-            {boxPos && (
-              <div
-                style={{
-                  position: 'absolute',
-                  border: '2px solid rgba(59, 130, 246, 0.8)',
-                  backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                  left: Math.min(boxPos.start.x, boxPos.current.x),
-                  top: Math.min(boxPos.start.y, boxPos.current.y),
-                  width: Math.abs(boxPos.current.x - boxPos.start.x),
-                  height: Math.abs(boxPos.current.y - boxPos.start.y),
-                  pointerEvents: 'none',
-                }}
-              />
-            )}
-          </div>
+            onClick={handleWandClick}
+          />
         )}
         <div ref={mapContainer} className="h-full w-full" />
         <div className="absolute bottom-40 left-6 z-20 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] lg:left-[120px] lg:bottom-10">
