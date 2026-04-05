@@ -1,8 +1,35 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { area as turfArea } from "@turf/turf";
+import {
+  CircleGauge,
+  CloudSun,
+  Eraser,
+  Focus,
+  Grid,
+  Hexagon,
+  House,
+  Loader2,
+  Map as MapIcon,
+  MapPin,
+  MousePointer2,
+  Navigation2,
+  Plus,
+  ReceiptText,
+  Ruler,
+  Save,
+  Shield,
+  ShoppingBasket,
+  Sparkles,
+  Sprout,
+  Spline,
+  TrendingUp,
+  User,
+  X,
+} from "lucide-react";
 import Map, { MapRef } from "@/components/map/Map";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ActionModal from "@/components/ui/action-modal";
 import MarketView from "@/components/ui/market-view";
@@ -10,55 +37,138 @@ import ProfileView from "@/components/ui/profile-view";
 import AdminView from "@/components/ui/admin-view";
 import AuthView from "@/components/ui/auth-view";
 import { cropLabels, cropList, PlatformLanguage, ui } from "@/lib/i18n";
-import { area as turfArea } from "@turf/turf";
-import { KZ_REGIONS, KZ_CENTER, KZ_ZOOM, getRegionName, KzRegion, KzDistrict } from "@/lib/kz-regions";
-import { Map as MapIcon, ShoppingBasket, User, Navigation2, Plus, Shield, PenTool, Eraser, MousePointer2, Focus, Hexagon, Spline, MapPin, Save, RotateCcw, Ruler, Wand2, Sparkles, Loader2, Grid, ChevronUp, X } from "lucide-react";
-import { AutoToolType } from "@/lib/turf-tools";
+import { apiUrl } from "@/lib/api";
+
+type ActiveTab = "home" | "map" | "market" | "profile" | "admin";
+
+type DashboardResponse = {
+  stats: {
+    totalPlots: number;
+    cropsCount: number;
+    totalAreaHectares: number;
+    averageCompetitionLevel: "low" | "medium" | "high";
+    averageCompetitionScore: number;
+    projectedIncomeKzt: number;
+    activeListings: number;
+  };
+  crops: Array<{
+    cropType: string;
+    areaHectares: number;
+    plotsCount: number;
+    fillColor: string | null;
+    competitionLevel: "low" | "medium" | "high";
+    competitionScore: number;
+  }>;
+  weather: {
+    status: string;
+    summary: string;
+  };
+  insight: {
+    title: string;
+    message: string;
+    confidence: number;
+  };
+};
+
+type SavedPlotResult = {
+  plot: {
+    id: string;
+    title: string;
+    cropType: string;
+    areaSizeHectares: number;
+    fillColor?: string | null;
+  };
+  competition: {
+    score: number;
+    level: "low" | "medium" | "high";
+    confidence: number;
+    marketplaceVisibility: "hidden" | "visible";
+    explanation: string;
+    nearbyAreaHectares: number;
+    nearbyPlotCount: number;
+  };
+  projectedIncomeKzt: number;
+};
+
+const competitionTone = {
+  low: {
+    badge: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  },
+  medium: {
+    badge: "bg-amber-100 text-amber-700 border-amber-200",
+  },
+  high: {
+    badge: "bg-red-100 text-red-700 border-red-200",
+  },
+} as const;
 
 export default function Home() {
   const mapRef = useRef<MapRef>(null);
 
-  // Tabs and general state
-  const [activeTab, setActiveTab] = useState<"map" | "market" | "profile" | "admin">("map");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("home");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Region and Language State
   const [language, setLanguage] = useState<PlatformLanguage>("ru");
-  const [filterTab, setFilterTab] = useState<"region" | "crops">("region");
-  const [selectedRegionIdx, setSelectedRegionIdx] = useState<number | null>(null);
-  const [selectedDistrictIdx, setSelectedDistrictIdx] = useState<number | null>(null);
-  const [selectedCityIdx, setSelectedCityIdx] = useState<number | null>(null);
-
-  // Professional Map Toolbar State
   const [drawMode, setDrawMode] = useState<string>("simple_select");
   const [measurement, setMeasurement] = useState<string | null>(null);
   const [isRulerActive, setIsRulerActive] = useState(false);
   const [isProcessingWand, setIsProcessingWand] = useState(false);
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
-  const [notification, setNotification] = useState<{msg: string, type: 'error' | 'warning' | 'success'} | null>(null);
+  const [notification, setNotification] = useState<{
+    msg: string;
+    type: "error" | "warning" | "success";
+  } | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [savedPlotResult, setSavedPlotResult] = useState<SavedPlotResult | null>(null);
 
-  // Drawing and Submission State
   const [isPoleOpen, setIsPoleOpen] = useState(false);
   const [drawnGeometry, setDrawnGeometry] = useState<any>(null);
   const [fieldName, setFieldName] = useState("Орёл 22");
   const [selectedCrop, setSelectedCrop] = useState<string>("");
-  const [fillColor, setFillColor] = useState<string>("#888888");
+  const [fillColor, setFillColor] = useState<string>("#D9B44A");
 
-  // Edit plot state
   const [editPlotData, setEditPlotData] = useState<any>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editCrop, setEditCrop] = useState("");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const t = ui[language] || ui.ru;
+  const localizedCompetition = {
+    low: language === "kk" ? "Төмен" : "Низкая",
+    medium: language === "kk" ? "Орташа" : "Средняя",
+    high: language === "kk" ? "Жоғары" : "Высокая",
+  } as const;
   const areaSizeHectares = drawnGeometry
     ? turfArea({ type: "Feature", geometry: drawnGeometry, properties: {} }) / 10000
     : 0;
 
+  const fetchDashboard = async () => {
+    const token = localStorage.getItem("agro_token");
+    if (!token) return;
+
+    setIsDashboardLoading(true);
+    try {
+      const res = await fetch(apiUrl("/dashboard/home"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setDashboard(json.data);
+      }
+    } catch {
+      setDashboard(null);
+    } finally {
+      setIsDashboardLoading(false);
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem("agro_token");
-    if (token) setIsLoggedIn(true);
+    if (token) {
+      setIsLoggedIn(true);
+      fetchDashboard();
+    }
     setSelectedCrop(cropLabels[language].watermelon);
     setEditCrop(cropLabels[language].watermelon);
   }, [language]);
@@ -66,14 +176,23 @@ export default function Home() {
   const handleAuthSuccess = (authData: any) => {
     localStorage.setItem("agro_token", authData.access_token);
     setIsLoggedIn(true);
+    fetchDashboard();
   };
 
   const handlePlotClick = (plot: any) => {
     setEditPlotData(plot);
     setEditTitle(plot.title || "");
     setEditCrop(plot.cropType || (cropLabels[language] as any).watermelon);
-    setFillColor(plot.fillColor || "#888888");
+    setFillColor(plot.fillColor || "#D9B44A");
     setIsEditModalOpen(true);
+  };
+
+  const showNotification = (
+    msg: string,
+    type: "error" | "warning" | "success",
+  ) => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 4000);
   };
 
   const updatePlot = async () => {
@@ -81,44 +200,56 @@ export default function Home() {
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem("agro_token");
-      const res = await fetch(`http://localhost:3008/farm-plots/${editPlotData.id}`, {
+      const res = await fetch(apiUrl(`/farm-plots/${editPlotData.id}`), {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ title: editTitle, cropType: editCrop, fillColor })
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: editTitle,
+          cropType: editCrop,
+          fillColor,
+        }),
       });
+
       if (res.ok) {
         setIsEditModalOpen(false);
         mapRef.current?.refreshPlots();
+        fetchDashboard();
       } else {
         alert("Failed to update field");
       }
-    } catch (e) {
+    } catch {
       alert("Error updating field");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const showNotification = (msg: string, type: 'error' | 'warning' | 'success') => {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 4000);
-  };
-
   const deletePlot = async () => {
     if (!editPlotData) return;
-    if (!confirm((t as any).deletePlotConfirm || "Вы уверены, что хотите удалить этот участок?")) return;
+    if (
+      !confirm(
+        (t as any).deletePlotConfirm ||
+          "Вы уверены, что хотите удалить этот участок?",
+      )
+    )
+      return;
+
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem("agro_token");
-      const res = await fetch(`http://localhost:3008/farm-plots/${editPlotData.id}`, {
+      const res = await fetch(apiUrl(`/farm-plots/${editPlotData.id}`), {
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         setIsEditModalOpen(false);
         mapRef.current?.refreshPlots();
+        fetchDashboard();
       }
-    } catch (e) {
+    } catch {
       alert("Error deleting field");
     } finally {
       setIsSubmitting(false);
@@ -128,7 +259,10 @@ export default function Home() {
   const handleSaveNewPlot = () => {
     const geom = mapRef.current?.getSelectedGeometry();
     if (!geom) {
-      alert(t.drawFieldFirst || "Сначала выделите нарисованный объект на карте (стрелкой)!");
+      alert(
+        t.drawFieldFirst ||
+          "Сначала выделите нарисованный объект на карте (стрелкой)!",
+      );
       return;
     }
     setDrawnGeometry(geom);
@@ -136,15 +270,24 @@ export default function Home() {
   };
 
   const submitPlot = async () => {
-    if (!drawnGeometry) { alert(t.drawFieldFirst); return; }
-    if (!fieldName.trim()) { alert(`${t.fieldName}: ${t.fieldNamePlaceholder}`); return; }
+    if (!drawnGeometry) {
+      alert(t.drawFieldFirst);
+      return;
+    }
+    if (!fieldName.trim()) {
+      alert(`${t.fieldName}: ${t.fieldNamePlaceholder}`);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem("agro_token");
-      const res = await fetch("http://localhost:3008/farm-plots", {
+      const res = await fetch(apiUrl("/farm-plots"), {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           title: fieldName.trim(),
           region: "Алматинская",
@@ -153,44 +296,157 @@ export default function Home() {
           geometry: drawnGeometry,
           cropType: selectedCrop,
           fillColor,
-          seasonYear: 2024
-        })
+          seasonYear: 2024,
+        }),
       });
 
       const json = await res.json();
       if (json.success) {
-        alert(`${t.plotSaved || 'Участок сохранен'}\n\n${json.data.analysis?.message || ''}`);
+        setSavedPlotResult(json.data as SavedPlotResult);
         mapRef.current?.refreshPlots();
+        fetchDashboard();
       } else {
         alert("Ошибка: " + json.message);
       }
-    } catch (e) {
+    } catch {
       alert(t.saveError || "Error saving");
     } finally {
       setIsSubmitting(false);
       setIsPoleOpen(false);
       mapRef.current?.deleteSelectedDraw();
-      mapRef.current?.changeDrawMode('simple_select');
+      mapRef.current?.changeDrawMode("simple_select");
     }
   };
 
+  const controlActions = [
+    {
+      label: language === "kk" ? "Менің орным" : "Моя точка",
+      icon: Navigation2,
+      onClick: () => mapRef.current?.focusCurrentLocation(),
+    },
+    {
+      label: language === "kk" ? "Сызғыш" : "Линейка",
+      icon: Ruler,
+      onClick: () => setIsRulerActive(!isRulerActive),
+    },
+    {
+      label: language === "kk" ? "Таңдау" : "Выбор",
+      icon: MousePointer2,
+      onClick: () => {
+        setDrawMode("simple_select");
+        mapRef.current?.changeDrawMode("simple_select");
+      },
+    },
+    {
+      label: language === "kk" ? "Түзету" : "Правка",
+      icon: Focus,
+      onClick: () => {
+        setDrawMode("direct_select");
+        mapRef.current?.changeDrawMode("direct_select");
+      },
+    },
+    {
+      label: language === "kk" ? "Алаң сызу" : "Нарисовать поле",
+      icon: Hexagon,
+      onClick: () => {
+        setDrawMode("draw_polygon");
+        mapRef.current?.changeDrawMode("draw_polygon");
+      },
+    },
+    {
+      label: language === "kk" ? "Сызық" : "Линия",
+      icon: Spline,
+      onClick: () => {
+        setDrawMode("draw_line_string");
+        mapRef.current?.changeDrawMode("draw_line_string");
+      },
+    },
+    {
+      label: language === "kk" ? "Белгі" : "Метка",
+      icon: MapPin,
+      onClick: () => {
+        setDrawMode("draw_point");
+        mapRef.current?.changeDrawMode("draw_point");
+      },
+    },
+    {
+      label: language === "kk" ? "Автоанықтау" : "Автоопределение",
+      icon: Sparkles,
+      onClick: () => {
+        setDrawMode("mass_magic_wand");
+        mapRef.current?.changeDrawMode("simple_select");
+      },
+    },
+    {
+      label: language === "kk" ? "Гекс тор" : "Гекс-сетка",
+      icon: Grid,
+      onClick: () => mapRef.current?.executeAutoTool("hexGrid_1ha"),
+    },
+    {
+      label: language === "kk" ? "Жою" : "Удалить",
+      icon: Eraser,
+      onClick: () => mapRef.current?.deleteSelectedDraw(),
+    },
+  ];
+
+  const statsCards = [
+    {
+      label: "Поля",
+      value: String(dashboard?.stats.totalPlots ?? 0),
+      icon: Sprout,
+    },
+    {
+      label: "Доход",
+      value: `${Math.round((dashboard?.stats.projectedIncomeKzt ?? 0) / 1000)}k`,
+      icon: TrendingUp,
+    },
+    {
+      label: "Бәсеке",
+      value: dashboard?.stats.averageCompetitionLevel
+        ? localizedCompetition[dashboard.stats.averageCompetitionLevel]
+        : localizedCompetition.low,
+      icon: CircleGauge,
+    },
+  ];
+
+  const regionName =
+    language === "kk" ? "Алматы облысы" : "Алматинская область";
+  const weatherSummary =
+    dashboard?.weather.summary?.trim() ||
+    (language === "kk"
+      ? "Ауа райы сервисі келесі кезеңде қосылады"
+      : "Погодный сервис подключим на следующем этапе");
+  const insightConfidence = Math.round(
+    (dashboard?.insight.confidence ?? 0.25) * 100,
+  );
+  const localizedVisibility = {
+    hidden: language === "kk" ? "Жасырын" : "Скрыто",
+    visible: language === "kk" ? "Көрінеді" : "Видно",
+  } as const;
+
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-[#EAF3E7] font-sans">
-      {!isLoggedIn && <AuthView onSuccess={handleAuthSuccess} {...({language} as any)} />}
+      {!isLoggedIn && <AuthView onSuccess={handleAuthSuccess} {...({ language } as any)} />}
 
-      {/* Dynamic Toast Notifications */}
       {notification && (
-        <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl font-black text-sm flex items-center gap-3 animate-in fade-in slide-in-from-top-10 ${
-          notification.type === 'error' ? 'bg-red-500 text-white' : 
-          notification.type === 'warning' ? 'bg-yellow-500 text-white' : 
-          'bg-[#2F6B3D] text-white'
-        }`}>
-          {notification.type === 'error' ? '❌' : notification.type === 'warning' ? '⚠️' : '✅'} {notification.msg}
+        <div
+          className={`fixed top-8 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-full px-6 py-3 text-sm font-black shadow-2xl ${
+            notification.type === "error"
+              ? "bg-red-500 text-white"
+              : notification.type === "warning"
+                ? "bg-yellow-500 text-white"
+                : "bg-[#2F6B3D] text-white"
+          }`}
+        >
+          {notification.msg}
         </div>
       )}
 
-      {/* Map Background */}
-      <div className={`absolute inset-0 z-0 transition-opacity duration-300 ${activeTab === 'map' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      <div
+        className={`absolute inset-0 z-0 transition-opacity duration-300 ${
+          activeTab === "map" ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
         <Map
           ref={mapRef}
           onPlotClick={handlePlotClick}
@@ -198,302 +454,529 @@ export default function Home() {
           onMeasurement={setMeasurement}
           language={language}
           showMeasurements={isRulerActive}
-          massWandActive={drawMode === 'mass_magic_wand'}
+          massWandActive={drawMode === "mass_magic_wand"}
           onProcessingStateChange={setIsProcessingWand}
           onNotification={showNotification}
         />
       </div>
 
-      {activeTab === 'market' && <MarketView {...({language} as any)} />}
-      {activeTab === 'profile' && <ProfileView {...({language} as any)} />}
-      {activeTab === 'admin' && <AdminView />}
-
-      {/* Map UI */}
-      <div className={activeTab === 'map' ? 'block' : 'hidden'}>
-        {/* Language Selection Header */}
-        <div className="absolute top-6 left-1/2 z-20 -translate-x-1/2">
-          <div className="flex items-center gap-1 rounded-full bg-white/88 p-1 shadow-lg backdrop-blur-md">
-            {(["ru", "kk", "en"] as PlatformLanguage[]).map((lang) => (
-              <button
-                key={lang}
-                type="button"
-                onClick={() => setLanguage(lang)}
-                className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] transition-colors ${
-                  language === lang ? "bg-[#2F6B3D] text-white" : "text-[#2F6B3D]/60 hover:bg-[#F5F9F4]"
-                }`}
-              >
-                {lang}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Top-Left Dynamic Filter Panel - Desktop Only */}
-        <div className="hidden lg:block absolute top-6 left-[120px] z-10 w-64 pointer-events-auto transition-all duration-500">
-          <Card className="shadow-lg border-none bg-white/95 backdrop-blur-md rounded-[1.5rem] p-0 max-h-[55vh] overflow-hidden flex flex-col">
-            <div className="flex border-b border-[#F0F5EE]">
-              <button onClick={() => setFilterTab("region")} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-wider transition-all ${filterTab === 'region' ? 'text-[#2F6B3D] border-b-2 border-[#2F6B3D]' : 'text-[#2F6B3D]/30'}`}>
-                {t.regionFilter || 'Регионы'}
-              </button>
-              <button onClick={() => setFilterTab("crops")} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-wider transition-all ${filterTab === 'crops' ? 'text-[#2F6B3D] border-b-2 border-[#2F6B3D]' : 'text-[#2F6B3D]/30'}`}>
-                {t.crops || 'Культуры'}
-              </button>
-            </div>
-            
-            <div className="overflow-y-auto p-4 custom-scrollbar" style={{ maxHeight: 'calc(55vh - 44px)' }}>
-              {filterTab === "region" ? (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-[9px] font-black text-[#2F6B3D]/40 uppercase ml-1 mb-1 block">{t.selectRegion || 'Область'}</label>
-                    <select
-                      className="w-full h-10 rounded-xl bg-[#F5F9F4] px-3 text-xs font-bold text-[#2F6B3D] shadow-inner focus:outline-none"
-                      value={selectedRegionIdx ?? ""}
-                      onChange={(e) => {
-                        const idx = e.target.value === "" ? null : Number(e.target.value);
-                        setSelectedRegionIdx(idx); setSelectedDistrictIdx(null); setSelectedCityIdx(null);
-                        if (idx !== null) {
-                          const r = KZ_REGIONS[idx];
-                          mapRef.current?.flyToRegion(r.center, r.zoom);
-                        }
-                      }}
-                    >
-                      <option value="">{t.allKazakhstan || 'Весь Казахстан'}</option>
-                      {KZ_REGIONS.map((r, i) => <option key={i} value={i}>{getRegionName(r, language)}</option>)}
-                    </select>
+      {activeTab === "home" && (
+        <div className="absolute inset-0 z-10 overflow-y-auto bg-[#EEF3EA] pb-28">
+          <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-4 px-4 pt-5 pb-6 lg:px-6">
+            <div className="rounded-[2rem] bg-[#17381C] px-4 py-4 text-white shadow-[0_24px_80px_rgba(10,26,14,0.18)]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/50">
+                    {language === "kk" ? "Басты бет" : "Главная"}
+                  </p>
+                  <h1 className="mt-1 text-2xl font-black tracking-tight">
+                    {regionName}
+                  </h1>
+                  <div className="mt-2 flex items-center gap-2 text-sm text-white/72">
+                    <CloudSun className="size-4 text-[#D9B44A]" />
+                    <span>{weatherSummary}</span>
                   </div>
-
-                  {selectedRegionIdx !== null && KZ_REGIONS[selectedRegionIdx].districts.length > 0 && (
-                    <div>
-                      <label className="text-[9px] font-black text-[#2F6B3D]/40 uppercase ml-1 mb-1 block">{t.selectDistrict || 'Район'}</label>
-                      <select
-                        className="w-full h-10 rounded-xl bg-[#F5F9F4] px-3 text-xs font-bold text-[#2F6B3D] shadow-inner focus:outline-none"
-                        value={selectedDistrictIdx ?? ""}
-                        onChange={(e) => {
-                          const idx = e.target.value === "" ? null : Number(e.target.value);
-                          setSelectedDistrictIdx(idx); setSelectedCityIdx(null);
-                          if (idx !== null) {
-                            const d = KZ_REGIONS[selectedRegionIdx!].districts[idx];
-                            mapRef.current?.flyToRegion(d.center, d.zoom);
-                          }
-                        }}
-                      >
-                        <option value="">—</option>
-                        {KZ_REGIONS[selectedRegionIdx].districts.map((d, i) => <option key={i} value={i}>{getRegionName(d, language)}</option>)}
-                      </select>
-                    </div>
-                  )}
-                  {selectedRegionIdx !== null && (
-                    <button
-                      onClick={() => {
-                        setSelectedRegionIdx(null); setSelectedDistrictIdx(null); setSelectedCityIdx(null);
-                        mapRef.current?.flyToRegion(KZ_CENTER, KZ_ZOOM);
-                      }}
-                      className="w-full h-9 rounded-xl bg-red-50 text-red-500 text-[10px] font-black uppercase flex items-center justify-center gap-1.5 transition-all mt-1"
-                    >
-                      <RotateCcw className="size-3" />
-                      {t.resetFilter || 'Сбросить'}
-                    </button>
-                  )}
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-1">
-                  {cropList.map((crop) => (
-                    <div key={crop.key} className="flex items-center gap-3 py-1.5 px-1 rounded-lg hover:bg-[#F5F9F4] transition-colors">
-                      <div className="size-7 rounded-full bg-white flex items-center justify-center text-xs shadow-sm border border-[#F0F5EE]">{crop.emoji}</div>
-                      <span className="text-[13px] font-bold text-[#2F6B3D]">{(cropLabels[language] as any)[crop.key]}</span>
+
+                <div className="flex items-center gap-2">
+                  <div className="rounded-full border border-white/12 bg-white/8 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white/72">
+                    {language === "kk" ? "0 хабарлама" : "0 уведомлений"}
+                  </div>
+                  <div className="flex size-11 items-center justify-center rounded-full border border-white/12 bg-white/10">
+                    <User className="size-4 text-white/85" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2.5">
+                {statsCards.map(({ label, value, icon: Icon }) => (
+                  <div
+                    key={label}
+                    className="rounded-[1.4rem] border border-white/10 bg-white/8 px-3 py-3"
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-[0.18em] text-white/50">
+                        {label}
+                      </span>
+                      <Icon className="size-3.5 text-white/68" />
+                    </div>
+                    <div className="text-lg font-black tracking-tight">{value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+              <Card className="rounded-[2rem] border-[#DCE8D7] bg-white p-5 shadow-[0_20px_70px_rgba(17,45,22,0.08)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
+                      {language === "kk" ? "AI болжам" : "AI прогноз"}
+                    </p>
+                    <h2 className="mt-1 text-xl font-black text-[#18351D]">
+                      {dashboard?.insight.title ||
+                        (language === "kk"
+                          ? "Әзірге дерек аз"
+                          : "Пока мало данных")}
+                    </h2>
+                  </div>
+                  <div className="rounded-full bg-[#F3EFE2] px-3 py-1.5 text-xs font-black text-[#7D692F]">
+                    {insightConfidence}%
+                  </div>
+                </div>
+
+                <p className="mt-3 text-sm leading-relaxed text-[#2F6B3D]/74">
+                  {dashboard?.insight.message ||
+                    (language === "kk"
+                      ? "Алаңдар қосылғаннан кейін мұнда бәсеке болжамы, ауа райы белгілері және әрекет ұсыныстары шығады."
+                      : "После добавления полей здесь появятся прогноз по конкуренции, погодные сигналы и рекомендации по действиям.")}
+                </p>
+
+                <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                  {(dashboard?.crops.length
+                    ? dashboard.crops
+                    : cropList.slice(0, 4).map((crop) => ({
+                        cropType: (cropLabels[language] as any)[crop.key],
+                        fillColor: null,
+                      }))
+                  ).map((crop: any) => (
+                    <div
+                      key={crop.cropType}
+                      className="flex min-w-fit items-center gap-2 rounded-full bg-[#F3F6EF] px-3 py-2 text-[#2F6B3D]"
+                    >
+                      <span
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: crop.fillColor || "#D9B44A" }}
+                      />
+                      <span className="text-xs font-bold">{crop.cropType}</span>
                     </div>
                   ))}
                 </div>
-              )}
+
+                <div className="mt-5 flex gap-2">
+                  <Button
+                    onClick={() => setActiveTab("map")}
+                    className="h-11 rounded-full bg-[#2F6B3D] px-4 text-sm font-black text-white hover:bg-[#285b34]"
+                  >
+                    {language === "kk" ? "Картаны ашу" : "Открыть карту"}
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setActiveTab("map");
+                      setDrawMode("draw_polygon");
+                      mapRef.current?.changeDrawMode("draw_polygon");
+                    }}
+                    className="h-11 rounded-full bg-[#D9B44A] px-4 text-sm font-black text-[#17381C] hover:bg-[#e5c15b]"
+                  >
+                    <Plus className="size-4" />
+                    {language === "kk" ? "Алаң қосу" : "Добавить поле"}
+                  </Button>
+                </div>
+              </Card>
+
+              <div className="grid gap-4">
+                <Card className="rounded-[2rem] border-[#DCE8D7] bg-white p-5 shadow-[0_20px_70px_rgba(17,45,22,0.08)]">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
+                    {language === "kk" ? "Жаңалықтар" : "Новости"}
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
+                      <p className="text-sm font-black text-[#18351D]">
+                        {language === "kk" ? "Нарық шолуы" : "Сводка по рынку"}
+                      </p>
+                      <p className="mt-1 text-sm text-[#2F6B3D]/72">
+                        {language === "kk"
+                          ? "Баға, сұраныс және бәсекелестер белсенділігі жеке лентада көрсетіледі."
+                          : "Цены, спрос и активность конкурентов будут собраны в отдельную ленту."}
+                      </p>
+                    </div>
+                    <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
+                      <p className="text-sm font-black text-[#18351D]">
+                        {language === "kk" ? "Ауа райы тәуекелі" : "Погодные риски"}
+                      </p>
+                      <p className="mt-1 text-sm text-[#2F6B3D]/72">
+                        {language === "kk"
+                          ? "Мұнда жауын, жел және жұмыс уақыты бойынша ескертулер пайда болады."
+                          : "Здесь появятся предупреждения по осадкам, ветру и окнам для работ."}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="rounded-[2rem] border-[#DCE8D7] bg-white p-5 shadow-[0_20px_70px_rgba(17,45,22,0.08)]">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
+                    {language === "kk" ? "Бүгінге" : "На сегодня"}
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    <div className="flex items-start justify-between rounded-[1.4rem] bg-[#17381C] px-4 py-4 text-white">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-white/55">
+                          {language === "kk" ? "Шаруашылық ахуалы" : "Пульс хозяйства"}
+                        </p>
+                        <p className="mt-2 text-base font-black">
+                          {isDashboardLoading
+                            ? language === "kk"
+                              ? "Жүктелуде..."
+                              : "Загружаем..."
+                            : dashboard?.insight.title ||
+                              (language === "kk"
+                                ? "Алаң деректерін қосыңыз"
+                                : "Добавьте данные по полям")}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
+                      <p className="text-sm font-black text-[#18351D]">
+                        {language === "kk" ? "Ауа райы" : "Погода"}
+                      </p>
+                      <p className="mt-1 text-sm text-[#2F6B3D]/72">{weatherSummary}</p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
             </div>
-          </Card>
-        </div>
-
-        {/* Top-Right Professional GIS Toolbar - Desktop Only */}
-        <div className="hidden lg:flex absolute top-6 right-6 z-10 flex-col gap-4 pointer-events-auto">
-          <div className="group bg-white/95 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[24px] p-3 flex flex-col items-start border border-white/40 transition-all duration-300 ease-out w-[64px] hover:w-[210px] overflow-hidden">
-            {/* GROUP: Навигация */}
-            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
-              <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 mt-1 whitespace-nowrap">Вид</span>
-            </div>
-            
-            <Button variant="ghost" className="h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 text-[#2F6B3D] hover:bg-green-50" onClick={() => mapRef.current?.focusCurrentLocation()} title={t.noLocation || 'Где я?'}>
-              <Navigation2 className="size-5 shrink-0" />
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Моя локация</span>
-            </Button>
-            
-            <Button variant="ghost" onClick={() => setIsRulerActive(!isRulerActive)} className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden ${isRulerActive ? 'bg-[#2F6B3D] text-white' : 'text-[#2F6B3D] hover:bg-green-50'}`} title="Линейки измерений">
-              <Ruler className="size-5 shrink-0" />
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Измерения</span>
-            </Button>
-
-            <div className="h-px w-10 group-hover:w-full bg-[#2F6B3D]/10 my-3 transition-all duration-300" />
-
-            {/* GROUP: Выделение */}
-            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
-               <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 whitespace-nowrap">Курсор</span>
-            </div>
-            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'simple_select' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('simple_select'); mapRef.current?.changeDrawMode('simple_select'); }} title="Выбрать объект (Select)">
-              <MousePointer2 className="size-5 shrink-0" />
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Указатель</span>
-            </Button>
-            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden ${drawMode === 'direct_select' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('direct_select'); mapRef.current?.changeDrawMode('direct_select'); }} title="Редактировать узлы (Direct Select)">
-              <Focus className="size-5 shrink-0" />
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Правка узлов</span>
-            </Button>
-
-            <div className="h-px w-10 group-hover:w-full bg-[#2F6B3D]/10 my-3 transition-all duration-300" />
-
-            {/* GROUP: Создание */}
-            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
-               <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 whitespace-nowrap">Создание</span>
-            </div>
-            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'mass_magic_wand' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('mass_magic_wand'); mapRef.current?.changeDrawMode('simple_select'); }} title="Авто выделение поля">
-              {isProcessingWand ? <Loader2 className="size-5 shrink-0 animate-spin"/> : <Sparkles className="size-5 shrink-0" />}
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Авто выделение</span>
-            </Button>
-            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'draw_polygon' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('draw_polygon'); mapRef.current?.changeDrawMode('draw_polygon'); }} title="Полигон">
-              <Hexagon className="size-5 shrink-0" />
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Полигон (Поле)</span>
-            </Button>
-            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden mb-1 ${drawMode === 'draw_line_string' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('draw_line_string'); mapRef.current?.changeDrawMode('draw_line_string'); }} title="Нарисовать линию (Дорога/Канал)">
-              <Spline className="size-5 shrink-0" />
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Линия (Дорога)</span>
-            </Button>
-            <Button variant="ghost" className={`h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden ${drawMode === 'draw_point' ? 'bg-[#2F6B3D] text-white shadow-md' : 'text-[#2F6B3D] hover:bg-green-50'}`} onClick={() => { setDrawMode('draw_point'); mapRef.current?.changeDrawMode('draw_point'); }} title="Поставить метку">
-              <MapPin className="size-5 shrink-0" />
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Метка</span>
-            </Button>
-
-            <div className="h-px w-10 group-hover:w-full bg-[#2F6B3D]/10 my-3 transition-all duration-300" />
-
-            {/* GROUP: Умные функции */}
-            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
-               <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 whitespace-nowrap">СЕТКА / СОТЫ</span>
-            </div>
-            <Button variant="ghost" className="h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden shadow-sm border border-[#2F6B3D]/20 bg-white text-[#2F6B3D] hover:bg-green-50" onClick={() => mapRef.current?.executeAutoTool('hexGrid_1ha')} title="Сгенерировать соты (Гексагоны) внутри полигона">
-              <Grid className="size-5 shrink-0" />
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-[#2F6B3D]">Создать соты</span>
-            </Button>
-
-            <div className="h-px w-10 group-hover:w-full bg-[#2F6B3D]/10 my-3 transition-all duration-300" />
-            
-            {/* GROUP: Действия */}
-            <div className="w-full flex justify-center group-hover:justify-start group-hover:pl-2 transition-all duration-300">
-               <span className="text-[8px] font-black uppercase tracking-widest text-[#2F6B3D]/40 mb-2 whitespace-nowrap">Очистка</span>
-            </div>
-            <Button variant="ghost" className="h-10 min-h-[40px] w-10 group-hover:w-full rounded-xl flex items-center justify-start p-0 pl-2.5 transition-all duration-300 overflow-hidden text-red-500 hover:bg-red-50" onClick={() => mapRef.current?.deleteSelectedDraw()} title="Удалить выбранное">
-              <Eraser className="size-5 shrink-0" />
-              <span className="ml-3 text-[13px] font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Удалить объект</span>
-            </Button>
           </div>
         </div>
+      )}
 
+      {activeTab === "market" && <MarketView {...({ language } as any)} />}
+      {activeTab === "profile" && <ProfileView {...({ language } as any)} />}
+      {activeTab === "admin" && <AdminView />}
 
+      {activeTab === "map" && (
+        <div className="pointer-events-none absolute inset-0 z-20">
+          <div className="absolute inset-x-0 top-0 px-4 pt-4 lg:px-6">
+            <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
+              <div className="pointer-events-auto max-w-md rounded-[1.5rem] border border-white/18 bg-[#16321C]/52 px-3 py-3 text-white shadow-[0_20px_60px_rgba(7,19,10,0.2)] backdrop-blur-xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/55">
+                      Регион
+                    </p>
+                    <h1 className="mt-1 truncate text-base font-black tracking-tight lg:text-lg">
+                      {regionName}
+                    </h1>
+                    <div className="mt-2 flex items-center gap-2 text-xs text-white/72">
+                      <CloudSun className="size-3.5 shrink-0 text-[#F3D38D]" />
+                      <span className="truncate">{weatherSummary}</span>
+                    </div>
+                  </div>
 
-        {/* Dynamic Measurement Banner - Moved to Bottom to prevent overlap with Languages */}
-        {measurement && (
-          <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 pointer-events-auto">
-            <div className="bg-[#2F6B3D] text-white px-6 py-2.5 rounded-full font-black tracking-wider text-sm shadow-[0_10px_30px_rgba(47,107,61,0.4)] border border-white/20 flex flex-col items-center justify-center">
-              <span className="text-[9px] uppercase tracking-[0.2em] opacity-60 mb-0.5">Текущее выделение</span>
-              {measurement}
+                  <div className="hidden shrink-0 items-start gap-2 md:flex">
+                    <div className="rounded-full border border-white/16 bg-white/10 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white/80">
+                      Карта
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pointer-events-auto flex gap-2 overflow-x-auto pb-1 md:hidden">
+                {(["ru", "kk"] as PlatformLanguage[]).map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => setLanguage(lang)}
+                    className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${
+                      language === lang
+                        ? "border-white bg-white text-[#1F4D2C]"
+                        : "border-white/16 bg-[#16321C]/45 text-white/75"
+                    }`}
+                  >
+                    {lang}
+                  </button>
+                ))}
+              </div>
+
+              <div className="pointer-events-auto hidden gap-2 overflow-x-auto pb-1 lg:flex">
+                {controlActions.map(({ label, icon: Icon, onClick }) => (
+                  <button
+                    key={label}
+                    onClick={onClick}
+                    className="flex min-w-fit items-center gap-2 rounded-full border border-white/16 bg-[#16321C]/42 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-xl transition-all hover:bg-[#16321C]/56 active:scale-95"
+                  >
+                    <Icon className="size-4" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <Button onClick={handleSaveNewPlot} className="h-14 px-8 rounded-full bg-[#C6A85E] text-white font-black hover:bg-[#b09450] shadow-xl hover:scale-105 active:scale-95 transition-all outline-none border-2 border-white/20">
-              <Save className="size-5 mr-2" />
-              {t.save || 'СОХРАНИТЬ В БАЗУ'}
-            </Button>
           </div>
-        )}
-      </div>
 
-      {/* Save New Plot Modal */}
-      <ActionModal isOpen={isPoleOpen} onClose={() => setIsPoleOpen(false)} title={t.newField || 'Новый участок'} primaryActionText={isSubmitting ? (t.saving || 'Сохранение...') : (t.save || 'Сохранить')} onPrimaryAction={submitPlot} language={language}>
-        <p className="mb-4 text-[#2F6B3D] font-bold opacity-70">{t.chooseCrop || 'Конфигурация'}</p>
-        <div className="flex flex-col gap-3 mb-2">
+          {measurement && (
+            <div className="pointer-events-auto absolute bottom-28 left-1/2 z-20 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 flex-col gap-3 lg:bottom-8 lg:left-auto lg:right-8 lg:translate-x-0">
+              <div className="rounded-[1.8rem] border border-white/16 bg-black/30 px-5 py-4 text-white shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-[0.24em] text-white/55">
+                    {language === "kk" ? "Ағымдағы таңдау" : "Текущее выделение"}
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/60">
+                    {drawMode.replaceAll("_", " ")}
+                  </span>
+                </div>
+                <div className="text-xl font-black tracking-tight">{measurement}</div>
+                <p className="mt-2 text-sm text-white/65">
+                  {language === "kk"
+                    ? "Бәсеке, табыс және маркеттегі көрінуін есептеу үшін полигонды сақтаңыз."
+                    : "Сохраните полигон, чтобы посчитать конкуренцию, доход и видимость в маркете."}
+                </p>
+              </div>
+              <Button
+                onClick={handleSaveNewPlot}
+                className="h-14 rounded-[1.8rem] bg-[#D9B44A] text-[#17381C] font-black shadow-[0_18px_50px_rgba(217,180,74,0.42)] hover:bg-[#e5c15b]"
+              >
+                <Save className="mr-2 size-5" />
+                Добавить поле
+              </Button>
+            </div>
+          )}
+
+          {savedPlotResult && (
+            <div className="pointer-events-auto absolute bottom-28 left-1/2 z-20 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 flex-col gap-3 lg:bottom-8 lg:left-8 lg:translate-x-0">
+              <Card className="rounded-[2rem] border-white/16 bg-white/88 p-5 shadow-[0_24px_80px_rgba(9,28,14,0.18)] backdrop-blur-2xl">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#2F6B3D]/45">
+                    {language === "kk" ? "Алаң сақталды" : "Поле сохранено"}
+                    </p>
+                    <h2 className="mt-1 text-xl font-black text-[#18351D]">
+                      {savedPlotResult.plot.title}
+                    </h2>
+                    <p className="mt-1 text-sm font-medium text-[#2F6B3D]/70">
+                      {savedPlotResult.plot.cropType}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSavedPlotResult(null)}
+                    className="flex size-10 items-center justify-center rounded-2xl bg-[#F5F1E8] text-[#2F6B3D] transition-all hover:bg-[#ece4d2]"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+
+                <div className="mb-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-[1.4rem] bg-[#F5F1E8] px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                      {language === "kk" ? "Табыс" : "Доход"}
+                    </p>
+                    <p className="mt-2 text-lg font-black text-[#18351D]">
+                      {Math.round(savedPlotResult.projectedIncomeKzt / 1000)}k ₸
+                    </p>
+                  </div>
+                  <div className="rounded-[1.4rem] bg-[#F5F1E8] px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                      {language === "kk" ? "Сенім" : "Уверенность"}
+                    </p>
+                    <p className="mt-2 text-lg font-black text-[#18351D]">
+                      {Math.round(savedPlotResult.competition.confidence * 100)}%
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mb-4 flex items-center justify-between rounded-[1.4rem] bg-[#F5F1E8] px-4 py-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                      {language === "kk" ? "Бәсеке" : "Конкуренция"}
+                    </p>
+                    <p className="mt-1 text-base font-black text-[#18351D]">
+                      {localizedCompetition[savedPlotResult.competition.level]}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-black uppercase ${competitionTone[savedPlotResult.competition.level].badge}`}
+                  >
+                    {localizedVisibility[savedPlotResult.competition.marketplaceVisibility]}
+                  </span>
+                </div>
+
+                <div className="mb-4 rounded-[1.4rem] bg-[#17381C] px-4 py-4 text-white">
+                  <div className="mb-2 flex items-center gap-2">
+                    <ReceiptText className="size-4 text-[#D9B44A]" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.22em] text-white/60">
+                      {language === "kk" ? "AI түсіндірме" : "AI объяснение"}
+                    </span>
+                  </div>
+                  <p className="text-sm leading-relaxed text-white/78">
+                    {savedPlotResult.competition.explanation}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-[1.2rem] bg-[#F5F1E8] px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/45">
+                      {language === "kk" ? "Жақын аумақ" : "Площадь рядом"}
+                    </p>
+                    <p className="mt-1 font-black text-[#18351D]">
+                      {savedPlotResult.competition.nearbyAreaHectares} ha
+                    </p>
+                  </div>
+                  <div className="rounded-[1.2rem] bg-[#F5F1E8] px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/45">
+                      {language === "kk" ? "Жақын алаңдар" : "Участки рядом"}
+                    </p>
+                    <p className="mt-1 font-black text-[#18351D]">
+                      {savedPlotResult.competition.nearbyPlotCount}
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      <ActionModal
+        isOpen={isPoleOpen}
+        onClose={() => setIsPoleOpen(false)}
+        title={t.newField || "Новый участок"}
+        primaryActionText={isSubmitting ? t.saving || "Сохранение..." : t.save || "Сохранить"}
+        onPrimaryAction={submitPlot}
+        language={language}
+      >
+        <p className="mb-4 text-[#2F6B3D] font-bold opacity-70">
+          {t.chooseCrop || "Конфигурация"}
+        </p>
+        <div className="mb-2 flex flex-col gap-3">
           <div>
-            <label className="text-[10px] font-black uppercase text-[#2F6B3D]/50 ml-1">{t.fieldName || 'Название'}</label>
-            <input type="text" value={fieldName} onChange={(e) => setFieldName(e.target.value)} className="h-14 w-full rounded-2xl bg-[#F5F9F4] px-4 font-bold text-[#2F6B3D] shadow-inner focus:outline-none" />
+            <label className="ml-1 text-[10px] font-black uppercase text-[#2F6B3D]/50">
+              {t.fieldName || "Название"}
+            </label>
+            <input
+              type="text"
+              value={fieldName}
+              onChange={(e) => setFieldName(e.target.value)}
+              className="h-14 w-full rounded-2xl bg-[#F5F9F4] px-4 font-bold text-[#2F6B3D] shadow-inner focus:outline-none"
+            />
           </div>
           <div>
-            <label className="text-[10px] font-black uppercase text-[#2F6B3D]/50 ml-1">Культура</label>
-            <select className="h-14 w-full rounded-2xl bg-[#F5F9F4] px-4 font-bold text-[#2F6B3D] shadow-inner focus:outline-none" value={selectedCrop} onChange={(e) => setSelectedCrop(e.target.value)}>
-              {cropList.map(c => <option key={c.key} value={(cropLabels[language] as any)[c.key]}>{c.emoji} {(cropLabels[language] as any)[c.key]}</option>)}
+            <label className="ml-1 text-[10px] font-black uppercase text-[#2F6B3D]/50">
+              Культура
+            </label>
+            <select
+              className="h-14 w-full rounded-2xl bg-[#F5F9F4] px-4 font-bold text-[#2F6B3D] shadow-inner focus:outline-none"
+              value={selectedCrop}
+              onChange={(e) => setSelectedCrop(e.target.value)}
+            >
+              {cropList.map((crop) => (
+                <option key={crop.key} value={(cropLabels[language] as any)[crop.key]}>
+                  {crop.emoji} {(cropLabels[language] as any)[crop.key]}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex flex-col gap-1">
-             <label className="text-[10px] font-black uppercase text-[#2F6B3D]/50 ml-1">Свой цвет заливки (Опционально)</label>
-             <input type="color" className="h-10 w-full rounded-xl cursor-pointer bg-transparent appearance-none border-none p-0" value={fillColor} onChange={(e) => setFillColor(e.target.value)} />
+            <label className="ml-1 text-[10px] font-black uppercase text-[#2F6B3D]/50">
+              Цвет культуры
+            </label>
+            <input
+              type="color"
+              className="h-10 w-full cursor-pointer appearance-none rounded-xl border-none bg-transparent p-0"
+              value={fillColor}
+              onChange={(e) => setFillColor(e.target.value)}
+            />
           </div>
-          <div className="rounded-2xl bg-[#F5F9F4] px-4 py-3 text-sm font-bold text-[#2F6B3D] shadow-inner">{t.area || 'Площадь'}: {areaSizeHectares.toFixed(2)} {t.hectares || 'га'}</div>
+          <div className="rounded-2xl bg-[#F5F9F4] px-4 py-3 text-sm font-bold text-[#2F6B3D] shadow-inner">
+            {t.area || "Площадь"}: {areaSizeHectares.toFixed(2)} {t.hectares || "га"}
+          </div>
         </div>
       </ActionModal>
 
-      {/* Edit Existing Plot Modal */}
-      <ActionModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Редактирование участка" primaryActionText={isSubmitting ? "Сохранение..." : "Сохранить"} onPrimaryAction={updatePlot} language={language}>
-        <p className="mb-4 text-[#2F6B3D] font-bold opacity-70">Измените данные выделенного участка:</p>
-        <div className="flex flex-col gap-3 mb-2">
-          <input type="text" className="h-14 w-full rounded-2xl bg-[#F5F9F4] px-4 font-bold text-[#2F6B3D] shadow-inner focus:outline-none" placeholder="Название участка" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
-          <select className="h-14 w-full rounded-2xl bg-[#F5F9F4] px-4 font-bold text-[#2F6B3D] shadow-inner focus:outline-none" value={editCrop} onChange={(e) => setEditCrop(e.target.value)}>
-            {cropList.map(c => <option key={c.key} value={(cropLabels[language] as any)[c.key]}>{c.emoji} {(cropLabels[language] as any)[c.key]}</option>)}
+      <ActionModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Редактирование участка"
+        primaryActionText={isSubmitting ? "Сохранение..." : "Сохранить"}
+        onPrimaryAction={updatePlot}
+        language={language}
+      >
+        <p className="mb-4 text-[#2F6B3D] font-bold opacity-70">
+          Измените данные выделенного участка:
+        </p>
+        <div className="mb-2 flex flex-col gap-3">
+          <input
+            type="text"
+            className="h-14 w-full rounded-2xl bg-[#F5F9F4] px-4 font-bold text-[#2F6B3D] shadow-inner focus:outline-none"
+            placeholder="Название участка"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+          />
+          <select
+            className="h-14 w-full rounded-2xl bg-[#F5F9F4] px-4 font-bold text-[#2F6B3D] shadow-inner focus:outline-none"
+            value={editCrop}
+            onChange={(e) => setEditCrop(e.target.value)}
+          >
+            {cropList.map((crop) => (
+              <option key={crop.key} value={(cropLabels[language] as any)[crop.key]}>
+                {crop.emoji} {(cropLabels[language] as any)[crop.key]}
+              </option>
+            ))}
           </select>
-          <div className="flex items-center justify-between px-2 bg-[#F5F9F4] rounded-2xl h-14 outline-none border-none">
-            <label className="text-xs font-black uppercase text-[#2F6B3D]/50 ml-2">Свой цвет заливки:</label>
-            <input type="color" className="w-12 h-10 border-0 outline-none rounded-lg cursor-pointer bg-transparent p-0 mr-2" value={fillColor} onChange={(e) => setFillColor(e.target.value)} />
+          <div className="flex h-14 items-center justify-between rounded-2xl border-none bg-[#F5F9F4] px-2 outline-none">
+            <label className="ml-2 text-xs font-black uppercase text-[#2F6B3D]/50">
+              Цвет заливки
+            </label>
+            <input
+              type="color"
+              className="mr-2 h-10 w-12 cursor-pointer rounded-lg border-0 bg-transparent p-0 outline-none"
+              value={fillColor}
+              onChange={(e) => setFillColor(e.target.value)}
+            />
           </div>
-          <button onClick={deletePlot} disabled={isSubmitting} className="w-full flex items-center justify-center h-14 bg-red-50 text-red-600 font-bold rounded-2xl border border-red-100 hover:bg-red-100 transition-colors mt-2">
+          <button
+            onClick={deletePlot}
+            disabled={isSubmitting}
+            className="mt-2 flex h-14 w-full items-center justify-center rounded-2xl border border-red-100 bg-red-50 font-bold text-red-600 transition-colors hover:bg-red-100"
+          >
             Удалить участок
           </button>
         </div>
       </ActionModal>
 
-      {/* ═══ MOBILE: Floating GIS Tools Strip (< lg) ═══ */}
-      {activeTab === 'map' && (
+      {activeTab === "map" && (
         <div className="lg:hidden fixed z-[60] pointer-events-auto transition-all duration-500">
-          {/* FAB Toggle Button */}
           <button
             onClick={() => setIsMobileToolsOpen(!isMobileToolsOpen)}
-            className={`fixed bottom-[92px] right-4 z-[61] w-12 h-12 rounded-full flex items-center justify-center shadow-xl transition-all duration-300 active:scale-90 ${
+            className={`fixed bottom-[92px] right-4 z-[61] flex h-12 w-12 items-center justify-center rounded-full shadow-xl transition-all duration-300 active:scale-90 ${
               isMobileToolsOpen
-                ? 'bg-red-500 text-white rotate-45 shadow-red-500/30'
-                : 'bg-[#2F6B3D] text-white shadow-[#2F6B3D]/40'
+                ? "rotate-45 bg-red-500 text-white shadow-red-500/30"
+                : "bg-[#2F6B3D] text-white shadow-[#2F6B3D]/40"
             }`}
           >
-            {isMobileToolsOpen ? <X className="size-5" /> : <Plus className="size-5" strokeWidth={3} />}
+            {isMobileToolsOpen ? (
+              <X className="size-5" />
+            ) : (
+              <Plus className="size-5" strokeWidth={3} />
+            )}
           </button>
 
-          {/* Tool Strip */}
           {isMobileToolsOpen && (
             <div className="fixed bottom-[92px] left-3 right-[68px] z-[60] animate-in slide-in-from-bottom-5 fade-in duration-300">
-              <div className="bg-white/95 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-white/50 p-2">
+              <div className="rounded-2xl border border-white/50 bg-white/95 p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)] backdrop-blur-2xl">
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                  <button onClick={() => { setDrawMode('mass_magic_wand'); mapRef.current?.changeDrawMode('simple_select'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'mass_magic_wand' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
-                    {isProcessingWand ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                    <span className="whitespace-nowrap">Авто</span>
-                  </button>
-                  <button onClick={() => { setDrawMode('draw_polygon'); mapRef.current?.changeDrawMode('draw_polygon'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'draw_polygon' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
-                    <Hexagon className="size-4" />
-                    <span className="whitespace-nowrap">Полигон</span>
-                  </button>
-                  <button onClick={() => { setDrawMode('draw_line_string'); mapRef.current?.changeDrawMode('draw_line_string'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'draw_line_string' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
-                    <Spline className="size-4" />
-                    <span className="whitespace-nowrap">Линия</span>
-                  </button>
-                  <button onClick={() => { setDrawMode('draw_point'); mapRef.current?.changeDrawMode('draw_point'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'draw_point' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
-                    <MapPin className="size-4" />
-                    <span className="whitespace-nowrap">Метка</span>
-                  </button>
-                  <button onClick={() => { mapRef.current?.executeAutoTool('hexGrid_1ha'); setIsMobileToolsOpen(false); }} className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100 transition-all active:scale-95">
-                    <Grid className="size-4" />
-                    <span className="whitespace-nowrap">Соты</span>
-                  </button>
-                  <button onClick={() => { mapRef.current?.deleteSelectedDraw(); setIsMobileToolsOpen(false); }} className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold bg-red-50 text-red-500 hover:bg-red-100 transition-all active:scale-95">
-                    <Eraser className="size-4" />
-                    <span className="whitespace-nowrap">Удалить</span>
-                  </button>
-                  <button onClick={() => { setDrawMode('simple_select'); mapRef.current?.changeDrawMode('simple_select'); setIsMobileToolsOpen(false); }} className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 ${drawMode === 'simple_select' ? 'bg-[#2F6B3D] text-white' : 'bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100'}`}>
-                    <MousePointer2 className="size-4" />
-                    <span className="whitespace-nowrap">Курсор</span>
-                  </button>
+                  {controlActions.map(({ label, icon: Icon, onClick }) => (
+                    <button
+                      key={label}
+                      onClick={() => {
+                        onClick();
+                        setIsMobileToolsOpen(false);
+                      }}
+                      className={`shrink-0 rounded-xl px-3 py-2.5 text-[11px] font-bold transition-all active:scale-95 ${
+                        label === (language === "kk" ? "Жою" : "Удалить")
+                          ? "bg-red-50 text-red-500"
+                          : "bg-[#F5F9F4] text-[#2F6B3D] hover:bg-green-100"
+                      } flex items-center gap-1.5`}
+                    >
+                      {label ===
+                        (language === "kk" ? "Автоанықтау" : "Автоопределение") &&
+                      isProcessingWand ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Icon className="size-4" />
+                      )}
+                      <span className="whitespace-nowrap">{label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -501,36 +984,40 @@ export default function Home() {
         </div>
       )}
 
-      {/* ═══ MOBILE: iOS-Style Bottom Tab Bar (< lg) ═══ */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 pointer-events-auto">
-        <div className="mx-4 mb-3 bg-white/80 backdrop-blur-2xl border border-white/50 shadow-[0_-4px_30px_rgba(0,0,0,0.08)] rounded-[2rem] h-[72px] flex items-center justify-around px-2">
+        <div className="mx-4 mb-3 flex h-[78px] items-center justify-around rounded-[2rem] border border-white/50 bg-white/86 px-2 shadow-[0_-4px_30px_rgba(0,0,0,0.08)] backdrop-blur-2xl">
           {[
-            { key: 'map' as const, icon: MapIcon, label: t.map || 'Карта' },
-            { key: 'market' as const, icon: ShoppingBasket, label: t.market || 'Маркет' },
-            { key: 'admin' as const, icon: Shield, label: 'Админ' },
-            { key: 'profile' as const, icon: User, label: t.profile || 'Профиль' },
+            {
+              key: "home" as const,
+              icon: House,
+              label: language === "kk" ? "Басты бет" : "Главная",
+            },
+            { key: "map" as const, icon: MapIcon, label: t.map || "Карта" },
+            { key: "market" as const, icon: ShoppingBasket, label: t.market || "Маркет" },
+            {
+              key: "admin" as const,
+              icon: Shield,
+              label: language === "kk" ? "Әкімші" : "Админ",
+            },
+            { key: "profile" as const, icon: User, label: t.profile || "Профиль" },
           ].map(({ key, icon: Icon, label }) => (
-            <button key={key} onClick={() => setActiveTab(key)} className={`relative flex flex-col items-center justify-center gap-0.5 w-16 h-full transition-all duration-300 active:scale-90 ${activeTab === key ? 'text-[#2F6B3D]' : 'text-[#9CA3AF]'}`}>
-              {activeTab === key && <div className="absolute -top-0.5 w-5 h-[3px] rounded-full bg-[#2F6B3D]" />}
-              <Icon className="size-[22px]" strokeWidth={activeTab === key ? 2.5 : 1.8} />
-              <span className={`text-[10px] font-semibold leading-none mt-0.5 ${activeTab === key ? 'text-[#2F6B3D]' : 'text-[#9CA3AF]'}`}>{label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ═══ DESKTOP: Vertical Sidebar (≥ lg) ═══ */}
-      <div className="hidden lg:flex fixed z-50 top-1/2 -translate-y-1/2 left-5 pointer-events-auto">
-        <div className="w-[84px] bg-white/90 backdrop-blur-2xl border border-white/40 shadow-[0_20px_50px_rgba(0,0,0,0.12)] rounded-[2rem] py-6 px-2 flex flex-col items-center justify-center gap-6">
-          {[
-            { key: 'map' as const, icon: MapIcon, label: t.map || 'Карта' },
-            { key: 'market' as const, icon: ShoppingBasket, label: t.market || 'Маркет' },
-            { key: 'admin' as const, icon: Shield, label: 'Админ' },
-            { key: 'profile' as const, icon: User, label: t.profile || 'Профиль' },
-          ].map(({ key, icon: Icon, label }) => (
-            <button key={key} onClick={() => setActiveTab(key)} className={`relative flex flex-col items-center gap-1.5 w-full py-2 rounded-2xl transition-all duration-300 active:scale-95 ${activeTab === key ? 'bg-[#2F6B3D] text-white shadow-lg shadow-[#2F6B3D]/25' : 'text-[#2F6B3D]/50 hover:bg-[#2F6B3D]/8 hover:text-[#2F6B3D]'}`}>
-              <Icon className="size-6" strokeWidth={activeTab === key ? 2.5 : 1.8} />
-              <span className="text-[9px] font-bold uppercase tracking-wider leading-none">{label}</span>
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`relative flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 transition-all duration-300 active:scale-90 ${
+                activeTab === key ? "text-[#2F6B3D]" : "text-[#9CA3AF]"
+              }`}
+            >
+              {activeTab === key && (
+                <div className="absolute -top-0.5 h-[3px] w-5 rounded-full bg-[#2F6B3D]" />
+              )}
+              <Icon
+                className="size-[21px]"
+                strokeWidth={activeTab === key ? 2.5 : 1.8}
+              />
+              <span className="mt-0.5 text-[9px] font-semibold leading-none">
+                {label}
+              </span>
             </button>
           ))}
         </div>

@@ -1,4 +1,4 @@
-export type PlatformLanguage = "ru" | "kk" | "en";
+export type PlatformLanguage = "ru" | "kk";
 
 export const cropList = [
   { key: "watermelon", emoji: "🍉" },

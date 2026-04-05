@@ -4,11 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cap:sync": "npx cap sync",
+    "cap:open:ios": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor/core": "^7.4.3",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-label": "^2.1.8",
@@ -31,6 +34,8 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/ios": "^7.4.3",
     "@tailwindcss/postcss": "^4",
     "@types/mapbox__mapbox-gl-draw": "^1.4.9",
     "@types/node": "^20",

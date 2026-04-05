@@ -15,6 +15,13 @@ ort.env.wasm.numThreads = 1;
 
 let session: ort.InferenceSession | null = null;
 let currentEmbedding: ort.Tensor | null = null;
+const workerScope = self as unknown as {
+  addEventListener: (
+    type: 'message',
+    listener: (event: { data: SamWorkerMessage }) => void,
+  ) => void;
+  postMessage: (message: unknown, transfer?: Transferable[]) => void;
+};
 
 // Initialize the ONNX session
 async function initModel(modelUrl: string) {
@@ -23,10 +30,10 @@ async function initModel(modelUrl: string) {
       executionProviders: ['wasm'], // Use 'webgpu' if targeting devices with good GPUs later
     });
     console.log('MobileSAM ONNX model loaded successfully.');
-    self.postMessage({ type: 'INIT_SUCCESS' });
+    workerScope.postMessage({ type: 'INIT_SUCCESS' });
   } catch (err: any) {
     console.error('Failed to init ONNX model:', err);
-    self.postMessage({ type: 'INIT_ERROR', error: err.message });
+    workerScope.postMessage({ type: 'INIT_ERROR', error: err.message });
   }
 }
 
@@ -37,7 +44,7 @@ async function runInference(
   tensorSize: number = 1024
 ) {
   if (!session) {
-    self.postMessage({ type: 'ERROR', error: 'Session not initialized.' });
+    workerScope.postMessage({ type: 'ERROR', error: 'Session not initialized.' });
     return;
   }
 
@@ -85,19 +92,19 @@ async function runInference(
     const mask = results['masks']; 
     
     // We send back the raw float array of logits
-    self.postMessage({
+    workerScope.postMessage({
       type: 'RESULT',
       mask: mask.data,
       dims: mask.dims,
-    }, [mask.data.buffer]); // Transfer buffer for speed
+    });
 
   } catch (error: any) {
     console.error('Inference error:', error);
-    self.postMessage({ type: 'ERROR', error: error.message });
+    workerScope.postMessage({ type: 'ERROR', error: error.message });
   }
 }
 
-self.addEventListener('message', (e: MessageEvent<SamWorkerMessage>) => {
+workerScope.addEventListener('message', (e) => {
   const { type, modelUrl, embedding, point, tensorSize } = e.data;
 
   if (type === 'INIT' && modelUrl) {

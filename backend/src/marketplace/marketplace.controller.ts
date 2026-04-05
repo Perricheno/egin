@@ -19,8 +19,21 @@ export class MarketplaceController {
 
   @Get()
   @ApiOperation({ summary: 'Get all listings' })
-  findAll() {
-    return this.marketplaceService.findAll();
+  findAll(
+    @Query('category') category?: string,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
+  ) {
+    return this.marketplaceService.findAll(category, search, sortBy, sortOrder);
+  }
+
+  @Get('my')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get all listings of the current farmer, including hidden ones' })
+  findMine(@Req() req: any) {
+    return this.marketplaceService.findMine(req.user.id);
   }
 
   @Get(':id')

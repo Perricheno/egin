@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, UseGuards, Req, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+  Patch,
+  Param,
+  Delete,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FarmPlotsService } from './farm-plots.service';
@@ -31,6 +42,19 @@ export class FarmPlotsController {
   @ApiOperation({ summary: 'Update a farm plot by id.' })
   async update(@Param('id') id: string, @Body() updateData: any) {
     const data = await this.farmPlotsService.update(id, updateData);
+    return { success: true, data };
+  }
+
+  @Get(':id/competition')
+  @ApiOperation({ summary: 'Calculate competition score for a farm plot and decide marketplace visibility.' })
+  async getCompetition(
+    @Param('id') id: string,
+    @Query('radiusKm') radiusKm?: string,
+  ) {
+    const data = await this.farmPlotsService.getCompetitionByPlotId(
+      id,
+      radiusKm ? Number(radiusKm) : 5,
+    );
     return { success: true, data };
   }
 

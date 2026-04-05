@@ -1,4 +1,12 @@
 import * as turf from "@turf/turf";
+import type {
+  Feature,
+  GeoJsonProperties,
+  LineString,
+  MultiLineString,
+  MultiPolygon,
+  Polygon,
+} from "geojson";
 
 export type AutoToolType =
   | "buffer_50m"
@@ -78,7 +86,7 @@ export const applyAutoTool = (
       case "bezierSpline":
         features.forEach((f) => {
           if (f.geometry.type === "LineString") {
-            results.push(turf.bezierSpline(f as turf.Feature<turf.LineString>));
+            results.push(turf.bezierSpline(f as Feature<LineString>));
           } else {
             throw new Error("Сглаживание работает только для линий");
           }
@@ -109,7 +117,14 @@ export const applyAutoTool = (
       case "lineToPolygon":
         features.forEach((f) => {
           if (f.geometry.type === "LineString" || f.geometry.type === "MultiLineString") {
-            results.push(turf.lineToPolygon(f));
+            results.push(
+              turf.lineToPolygon(
+                f as
+                  | Feature<LineString | MultiLineString, GeoJsonProperties>
+                  | LineString
+                  | MultiLineString,
+              ),
+            );
           }
         });
         break;
@@ -117,7 +132,14 @@ export const applyAutoTool = (
       case "polygonToLine":
         features.forEach((f) => {
           if (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon") {
-            results.push(turf.polygonToLine(f) as any);
+            results.push(
+              turf.polygonToLine(
+                f as
+                  | Feature<Polygon | MultiPolygon, GeoJsonProperties>
+                  | Polygon
+                  | MultiPolygon,
+              ) as any,
+            );
           }
         });
         break;
@@ -161,7 +183,7 @@ export const applyAutoTool = (
       case "tesselate":
         features.forEach(f => {
             if (f.geometry.type === "Polygon") {
-                const tess = turf.tesselate(f as turf.Feature<turf.Polygon>);
+                const tess = turf.tesselate(f as Feature<Polygon>);
                 results.push(...tess.features);
             } else {
                 throw new Error("Триангуляция работает только для полигонов");

@@ -1,133 +1,258 @@
 "use client";
 
 import { useState } from "react";
-import { X, Check } from "lucide-react";
+import { Check, Sprout, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiUrl } from "@/lib/api";
+import { PlatformLanguage } from "@/lib/i18n";
 
 interface CreateListingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  language: PlatformLanguage;
 }
 
-export default function CreateListingModal({ isOpen, onClose, onSuccess }: CreateListingModalProps) {
+export default function CreateListingModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  language,
+}: CreateListingModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
-    category: "Овощи",
-    cropId: "Картофель",
+    category: language === "kk" ? "Көкөніс" : "Овощи",
+    cropId: language === "kk" ? "Картоп" : "Картофель",
     quantity: "",
     unit: "кг",
     price: "",
     currency: "KZT",
-    location: "Алматинская обл.",
+    location: language === "kk" ? "Алматы обл." : "Алматинская обл.",
     availableFrom: new Date().toISOString().split("T")[0],
     description: "",
   });
+  const copy =
+    language === "kk"
+      ? {
+          needLogin: "Жүйеге кіріңіз",
+          hidden:
+            "Жарияланым жасалды, бірақ бәсеке төмен болғандықтан жалпы маркеттен жасырылды.",
+          visible: "Жарияланым жасалды және маркетте көрініп тұр.",
+          errorCreate: "Жарияланым жасау қатесі: ",
+          errorSend: "Деректерді жіберу мүмкін болмады.",
+          eyebrow: "Жаңа жарияланым",
+          title: "Өнімді жариялау",
+          smart: "Ақылды көріну",
+          smartText:
+            "Жарияланым жасалғаннан кейін жүйе бәсекені бағалайды. Егер бәсеке төмен болса, позицияны маркеттен жасыра алады.",
+          fieldTitle: "Атауы",
+          category: "Санат",
+          crop: "Дақыл",
+          quantity: "Көлем",
+          price: "Баға",
+          location: "Орналасу",
+          available: "Қай күннен",
+          description: "Сипаттама",
+          publishing: "Жариялануда...",
+          publish: "Жариялау",
+          vegetables: "Көкөніс",
+          fruits: "Жеміс",
+          grains: "Дәнді",
+          other: "Басқа",
+          titlePlaceholder: "Мысалы: Іріктелген картоп",
+          locationPlaceholder: "Алматы обл, Талғар",
+          descriptionPlaceholder: "Сапа, сақтау және жеткізу туралы қосымша мәлімет...",
+        }
+      : {
+          needLogin: "Пожалуйста, войдите в систему",
+          hidden:
+            "Объявление создано, но скрыто из общего маркетплейса из-за низкой конкуренции.",
+          visible: "Объявление создано и доступно в общем маркетплейсе.",
+          errorCreate: "Ошибка при создании объявления: ",
+          errorSend: "Не удалось отправить данные.",
+          eyebrow: "Новое объявление",
+          title: "Публикация из хозяйства",
+          smart: "Умная видимость",
+          smartText:
+            "После публикации система оценивает конкуренцию. Если конкуренция низкая, позиция может быть скрыта из общего маркета.",
+          fieldTitle: "Название",
+          category: "Категория",
+          crop: "Культура",
+          quantity: "Объем",
+          price: "Цена",
+          location: "Локация",
+          available: "Доступно с",
+          description: "Описание",
+          publishing: "Публикуем...",
+          publish: "Опубликовать",
+          vegetables: "Овощи",
+          fruits: "Фрукты",
+          grains: "Зерновые",
+          other: "Прочее",
+          titlePlaceholder: "Например: Отборный картофель",
+          locationPlaceholder: "Алматинская обл, Талгар",
+          descriptionPlaceholder: "Дополнительные детали по качеству, хранению и логистике...",
+        };
 
   if (!isOpen) return null;
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) => {
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     try {
       const token = localStorage.getItem("agro_token");
       if (!token) {
-        alert("Пожалуйста, войдите в систему");
+        alert(copy.needLogin);
         return;
       }
 
-      const res = await fetch("http://localhost:3000/marketplace/listings", {
+      const res = await fetch(apiUrl("/marketplace/listings"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           ...formData,
           quantity: Number(formData.quantity),
           price: Number(formData.price),
-        })
+        }),
       });
 
       const json = await res.json();
-      
+
       if (res.ok && json) {
+        const visibilityStatus = json.visibilityStatus as string | undefined;
+        const visibilityReason = json.visibilityReason as string | undefined;
+
+        if (visibilityStatus === "hidden") {
+          alert(visibilityReason || copy.hidden);
+        } else if (visibilityStatus === "visible") {
+          alert(visibilityReason || copy.visible);
+        }
+
         onSuccess();
         onClose();
       } else {
-        alert("Ошибка при создании объявления: " + (json.message || res.statusText));
+        alert(copy.errorCreate + (json.message || res.statusText));
       }
-    } catch (e) {
-      alert("Не удалось отправить данные.");
+    } catch {
+      alert(copy.errorSend);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-[#EAF3E7] w-full sm:w-[32rem] max-h-[90vh] sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-10 duration-300">
-        
-        <div className="px-6 py-4 flex justify-between items-center bg-white/60 backdrop-blur-md border-b border-white/40 sticky top-0 z-10">
-          <h2 className="text-xl font-black text-[#2F6B3D]">Новое объявление</h2>
-          <button onClick={onClose} className="p-2 rounded-full bg-white text-muted-foreground hover:text-black shadow-sm transition-colors">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-3 backdrop-blur-sm sm:items-center">
+      <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-[2rem] bg-[#F4EFE6] shadow-[0_30px_100px_rgba(13,30,17,0.3)] animate-in slide-in-from-bottom-8 duration-300">
+        <div className="flex items-center justify-between border-b border-white/45 bg-white/55 px-6 py-5 backdrop-blur-xl">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#2F6B3D]/45">
+              {copy.eyebrow}
+            </p>
+            <h2 className="mt-1 text-2xl font-black text-[#17381C]">
+              {copy.title}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex size-11 items-center justify-center rounded-full bg-white text-[#17381C] shadow-sm transition-colors hover:bg-[#efe7d6]"
+          >
             <X className="size-5" />
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto">
+        <div className="overflow-y-auto px-6 py-6">
+          <div className="mb-5 rounded-[1.8rem] bg-[#17381C] px-5 py-4 text-white">
+            <div className="mb-2 flex items-center gap-2">
+              <Sprout className="size-4 text-[#D9B44A]" />
+              <span className="text-[10px] font-black uppercase tracking-[0.22em] text-white/62">
+                {copy.smart}
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed text-white/78">
+              {copy.smartText}
+            </p>
+          </div>
+
           <form id="create-listing-form" onSubmit={handleSubmit} className="space-y-4">
-            
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#2F6B3D] ml-2 opacity-70 uppercase tracking-wider">Название</label>
-              <input 
-                name="title" required value={formData.title} onChange={handleChange}
-                className="w-full h-14 bg-white rounded-2xl px-4 shadow-sm border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/30 transition-shadow text-sm font-medium" 
-                placeholder="Например: Отборный картофель" 
+              <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                {copy.fieldTitle}
+              </label>
+              <input
+                name="title"
+                required
+                value={formData.title}
+                onChange={handleChange}
+                className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                placeholder={copy.titlePlaceholder}
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#2F6B3D] ml-2 opacity-70 uppercase tracking-wider">Категория</label>
-                <select 
-                  name="category" required value={formData.category} onChange={handleChange}
-                  className="w-full h-14 bg-white rounded-2xl px-4 shadow-sm border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/30 transition-shadow text-sm font-medium"
+                <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {copy.category}
+                </label>
+                <select
+                  name="category"
+                  required
+                  value={formData.category}
+                  onChange={handleChange}
+                  className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
                 >
-                  <option value="Овощи">Овощи</option>
-                  <option value="Фрукты">Фрукты</option>
-                  <option value="Зерновые">Зерновые</option>
-                  <option value="Прочее">Прочее</option>
+                  <option value={copy.vegetables}>{copy.vegetables}</option>
+                  <option value={copy.fruits}>{copy.fruits}</option>
+                  <option value={copy.grains}>{copy.grains}</option>
+                  <option value={copy.other}>{copy.other}</option>
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#2F6B3D] ml-2 opacity-70 uppercase tracking-wider">Культура (Тег)</label>
-                <input 
-                  name="cropId" required value={formData.cropId} onChange={handleChange}
-                  className="w-full h-14 bg-white rounded-2xl px-4 shadow-sm border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/30 transition-shadow text-sm font-medium" 
-                  placeholder="Картофель" 
+                <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {copy.crop}
+                </label>
+                <input
+                  name="cropId"
+                  required
+                  value={formData.cropId}
+                  onChange={handleChange}
+                  className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                  placeholder="Картофель"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#2F6B3D] ml-2 opacity-70 uppercase tracking-wider">Объем</label>
+                <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {copy.quantity}
+                </label>
                 <div className="flex gap-2">
-                  <input 
-                    name="quantity" type="number" required min="1" value={formData.quantity} onChange={handleChange}
-                    className="w-full h-14 bg-white rounded-2xl px-4 shadow-sm border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/30 transition-shadow text-sm font-medium" 
-                    placeholder="100" 
+                  <input
+                    name="quantity"
+                    type="number"
+                    required
+                    min="1"
+                    value={formData.quantity}
+                    onChange={handleChange}
+                    className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                    placeholder="100"
                   />
-                  <select 
-                    name="unit" value={formData.unit} onChange={handleChange}
-                    className="w-24 h-14 bg-white rounded-2xl px-2 shadow-sm border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/30 text-sm font-medium"
+                  <select
+                    name="unit"
+                    value={formData.unit}
+                    onChange={handleChange}
+                    className="h-14 w-28 rounded-[1.4rem] border-none bg-white px-3 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
                   >
                     <option value="т">тонн</option>
                     <option value="кг">кг</option>
@@ -137,61 +262,83 @@ export default function CreateListingModal({ isOpen, onClose, onSuccess }: Creat
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#2F6B3D] ml-2 opacity-70 uppercase tracking-wider">Цена за ед.</label>
-                <input 
-                  name="price" type="number" required min="1" value={formData.price} onChange={handleChange}
-                  className="w-full h-14 bg-white rounded-2xl px-4 shadow-sm border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/30 transition-shadow text-sm font-medium" 
-                  placeholder="25000" 
+                <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {copy.price}
+                </label>
+                <input
+                  name="price"
+                  type="number"
+                  required
+                  min="1"
+                  value={formData.price}
+                  onChange={handleChange}
+                  className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                  placeholder="25000"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#2F6B3D] ml-2 opacity-70 uppercase tracking-wider">Регион / Локация</label>
-              <input 
-                name="location" required value={formData.location} onChange={handleChange}
-                className="w-full h-14 bg-white rounded-2xl px-4 shadow-sm border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/30 transition-shadow text-sm font-medium" 
-                placeholder="Алматинская обл, Талгар" 
+              <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                {copy.location}
+              </label>
+              <input
+                name="location"
+                required
+                value={formData.location}
+                onChange={handleChange}
+                className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                placeholder={copy.locationPlaceholder}
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#2F6B3D] ml-2 opacity-70 uppercase tracking-wider">Доступно с</label>
-              <input 
-                name="availableFrom" type="date" required value={formData.availableFrom} onChange={handleChange}
-                className="w-full h-14 bg-white rounded-2xl px-4 shadow-sm border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/30 transition-shadow text-sm font-medium"
+              <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                {copy.available}
+              </label>
+              <input
+                name="availableFrom"
+                type="date"
+                required
+                value={formData.availableFrom}
+                onChange={handleChange}
+                className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-[#2F6B3D] ml-2 opacity-70 uppercase tracking-wider">Описание</label>
-              <textarea 
-                name="description" rows={3} value={formData.description} onChange={handleChange}
-                className="w-full bg-white rounded-2xl p-4 shadow-sm border-none focus:outline-none focus:ring-2 focus:ring-[#2F6B3D]/30 transition-shadow text-sm font-medium resize-none" 
-                placeholder="Дополнительные детали..." 
+              <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                {copy.description}
+              </label>
+              <textarea
+                name="description"
+                rows={4}
+                value={formData.description}
+                onChange={handleChange}
+                className="w-full resize-none rounded-[1.4rem] border-none bg-white p-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                placeholder={copy.descriptionPlaceholder}
               />
             </div>
-
           </form>
         </div>
 
-        <div className="p-6 bg-white/40 backdrop-blur-md border-t border-white/60 sticky bottom-0">
-          <Button 
-            type="submit" 
+        <div className="border-t border-white/50 bg-white/55 px-6 py-5 backdrop-blur-xl">
+          <Button
+            type="submit"
             form="create-listing-form"
             disabled={isSubmitting}
-            className="w-full h-14 rounded-2xl bg-[#2F6B3D] text-white font-black text-lg shadow-xl shadow-green-900/30 hover:scale-[1.02] transition-transform active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            className="h-14 w-full rounded-[1.4rem] bg-[#17381C] text-lg font-black text-white shadow-xl hover:bg-[#214a28]"
           >
             {isSubmitting ? (
-              <span className="animate-pulse">Отправка...</span>
+              copy.publishing
             ) : (
               <>
-                <Check className="size-6" /> Опубликовать
+                <Check className="mr-2 size-5" />
+                {copy.publish}
               </>
             )}
           </Button>
         </div>
-
       </div>
     </div>
   );

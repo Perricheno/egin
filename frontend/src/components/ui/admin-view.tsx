@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { Card } from './card';
+import { apiUrl } from '@/lib/api';
 
 export default function AdminView() {
   const [plots, setPlots] = useState<any[]>([]);
@@ -11,7 +12,7 @@ export default function AdminView() {
 
   const fetchPlots = async () => {
     try {
-      const res = await fetch('http://localhost:3000/farm-plots');
+      const res = await fetch(apiUrl('/farm-plots'));
       const json = await res.json();
       if (json.success) setPlots(json.data);
     } catch (e) {
@@ -23,7 +24,7 @@ export default function AdminView() {
     if (!confirm("Удалить участок?")) return;
     try {
       const token = localStorage.getItem("agro_token");
-      await fetch(`http://localhost:3000/farm-plots/${id}`, {
+      await fetch(apiUrl(`/farm-plots/${id}`), {
         method: 'DELETE',
         headers: { "Authorization": `Bearer ${token}` }
       });

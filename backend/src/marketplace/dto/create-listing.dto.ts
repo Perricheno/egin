@@ -1,6 +1,9 @@
 import { IsString, IsNotEmpty, IsNumber, IsOptional, IsDateString, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ListingStatus } from '../entities/marketplace-listing.entity';
+import {
+  ListingStatus,
+  ListingVisibilityStatus,
+} from '../entities/marketplace-listing.entity';
 
 export class CreateListingDto {
   @ApiProperty()
@@ -56,4 +59,9 @@ export class UpdateListingDto extends CreateListingDto {
   @IsEnum(ListingStatus)
   @IsOptional()
   status?: ListingStatus;
+
+  @ApiPropertyOptional({ enum: ListingVisibilityStatus })
+  @IsEnum(ListingVisibilityStatus)
+  @IsOptional()
+  visibilityStatus?: ListingVisibilityStatus;
 }

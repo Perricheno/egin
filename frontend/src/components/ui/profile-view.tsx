@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { User, Settings, LogOut, ChevronRight, ChevronLeft, Map as MapIcon, ShieldCheck, Save, X, Check } from "lucide-react";
 import { PlatformLanguage, ui } from "@/lib/i18n";
+import { apiUrl } from "@/lib/api";
 
 type ProfileSubView = "main" | "plots" | "deals" | "settings";
 
@@ -55,7 +56,7 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
 
   const fetchProfile = async (token: string) => {
     try {
-      const res = await fetch("http://localhost:3008/users/me", {
+      const res = await fetch(apiUrl("/users/me"), {
         headers: { "Authorization": `Bearer ${token}` },
       });
       const json = await res.json();
@@ -79,7 +80,7 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
     setLoadingPlots(true);
     try {
       const token = localStorage.getItem("agro_token");
-      const res = await fetch("http://localhost:3008/farm-plots", {
+      const res = await fetch(apiUrl("/farm-plots"), {
         headers: { "Authorization": `Bearer ${token}` },
       });
       const json = await res.json();
@@ -91,7 +92,7 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
     setLoadingOrders(true);
     try {
       const token = localStorage.getItem("agro_token");
-      const res = await fetch("http://localhost:3008/orders/my", {
+      const res = await fetch(apiUrl("/orders/my"), {
         headers: { "Authorization": `Bearer ${token}` },
       });
       const json = await res.json();
@@ -104,7 +105,7 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
     setSaveSuccess(false);
     try {
       const token = localStorage.getItem("agro_token");
-      const res = await fetch("http://localhost:3008/users/me", {
+      const res = await fetch(apiUrl("/users/me"), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

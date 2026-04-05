@@ -21,6 +21,7 @@ import { KZ_BOUNDS, KZ_CENTER, KZ_ZOOM } from "@/lib/kz-regions";
 import { applyAutoTool, AutoToolType } from "@/lib/turf-tools";
 import { contours } from "d3-contour";
 import { SamWorkerMessage } from "@/workers/sam.worker";
+import { apiUrl } from "@/lib/api";
 
 type BaseMapMode = "simple" | "satellite";
 
@@ -226,7 +227,7 @@ const Map = forwardRef<MapRef, MapProps>(
 
     const fetchPlots = async (map: maplibregl.Map) => {
       try {
-        const response = await fetch("http://localhost:3008/farm-plots");
+        const response = await fetch(apiUrl("/farm-plots"));
         if (!response.ok) return;
         const json = await response.json();
         if (!json.success) return;

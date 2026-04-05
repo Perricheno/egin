@@ -7,6 +7,11 @@ export enum ListingStatus {
   CANCELLED = 'cancelled',
 }
 
+export enum ListingVisibilityStatus {
+  VISIBLE = 'visible',
+  HIDDEN = 'hidden',
+}
+
 @Entity('marketplace_listings')
 export class MarketplaceListing {
   @PrimaryGeneratedColumn('uuid')
@@ -51,6 +56,22 @@ export class MarketplaceListing {
 
   @Column({ type: 'enum', enum: ListingStatus, default: ListingStatus.ACTIVE })
   status: ListingStatus;
+
+  @Column({
+    type: 'enum',
+    enum: ListingVisibilityStatus,
+    default: ListingVisibilityStatus.VISIBLE,
+  })
+  visibilityStatus: ListingVisibilityStatus;
+
+  @Column({ type: 'varchar', nullable: true })
+  competitionLevel?: string | null;
+
+  @Column({ type: 'decimal', nullable: true })
+  competitionScore?: number | null;
+
+  @Column({ nullable: true, type: 'text' })
+  visibilityReason?: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

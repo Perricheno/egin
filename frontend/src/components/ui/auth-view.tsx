@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PlatformLanguage, ui } from "@/lib/i18n";
+import { apiUrl } from "@/lib/api";
 
 interface AuthViewProps {
   onSuccess: (authData: any) => void;
@@ -41,7 +42,7 @@ export default function AuthView({ onSuccess, language }: AuthViewProps) {
 
   const checkHealth = async () => {
     try {
-      const res = await fetch("http://localhost:3008/");
+      const res = await fetch(apiUrl("/"));
       if (res.ok) setServerStatus("online");
       else setServerStatus("offline");
     } catch {
@@ -84,7 +85,7 @@ export default function AuthView({ onSuccess, language }: AuthViewProps) {
     }
 
     try {
-      const res = await fetch(`http://localhost:3008${endpoint}`, {
+      const res = await fetch(apiUrl(endpoint), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
