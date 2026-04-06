@@ -12,6 +12,12 @@ export enum ListingVisibilityStatus {
   HIDDEN = 'hidden',
 }
 
+export enum ListingRecommendationStatus {
+  HEALTHY = 'healthy',
+  CAUTION = 'caution',
+  LOW_INTEREST = 'low_interest',
+}
+
 @Entity('marketplace_listings')
 export class MarketplaceListing {
   @PrimaryGeneratedColumn('uuid')
@@ -72,6 +78,22 @@ export class MarketplaceListing {
 
   @Column({ nullable: true, type: 'text' })
   visibilityReason?: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: ListingRecommendationStatus,
+    nullable: true,
+  })
+  recommendationStatus?: ListingRecommendationStatus | null;
+
+  @Column({ nullable: true, type: 'text' })
+  recommendationTitle?: string | null;
+
+  @Column({ nullable: true, type: 'text' })
+  recommendationMessage?: string | null;
+
+  @Column('simple-json', { nullable: true })
+  recommendedActions?: string[] | null;
 
   @CreateDateColumn()
   createdAt: Date;

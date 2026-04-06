@@ -11,13 +11,13 @@ export class WeatherController {
   @ApiOperation({ summary: 'Return current weather contract for the given coordinates.' })
   @ApiQuery({ name: 'lat', type: Number })
   @ApiQuery({ name: 'lng', type: Number })
-  getCurrent(
+  async getCurrent(
     @Query('lat') lat: string,
     @Query('lng') lng: string,
   ) {
     return {
       success: true,
-      data: this.weatherService.getCurrent(Number(lat), Number(lng)),
+      data: await this.weatherService.getCurrent(Number(lat), Number(lng)),
     };
   }
 
@@ -26,14 +26,18 @@ export class WeatherController {
   @ApiQuery({ name: 'lat', type: Number })
   @ApiQuery({ name: 'lng', type: Number })
   @ApiQuery({ name: 'days', type: Number, required: false })
-  getForecast(
+  async getForecast(
     @Query('lat') lat: string,
     @Query('lng') lng: string,
     @Query('days') days?: string,
   ) {
     return {
       success: true,
-      data: this.weatherService.getForecast(Number(lat), Number(lng), Number(days || 7)),
+      data: await this.weatherService.getForecast(
+        Number(lat),
+        Number(lng),
+        Number(days || 7),
+      ),
     };
   }
 
@@ -41,13 +45,13 @@ export class WeatherController {
   @ApiOperation({ summary: 'Return agricultural alerts for a region and district.' })
   @ApiQuery({ name: 'region', type: String, required: false })
   @ApiQuery({ name: 'district', type: String, required: false })
-  getAlerts(
+  async getAlerts(
     @Query('region') region?: string,
     @Query('district') district?: string,
   ) {
     return {
       success: true,
-      data: this.weatherService.getAlerts(region, district),
+      data: await this.weatherService.getAlerts(region, district),
     };
   }
 }

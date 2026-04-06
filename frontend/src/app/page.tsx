@@ -88,10 +88,25 @@ type DashboardResponse = {
   weather: {
     status: string;
     summary: string;
-    today: null;
+    today: {
+      temperature: number | null;
+      precipitationProbability: number | null;
+      windSpeed: number | null;
+      summary: string;
+    } | null;
     forecast: Array<{
       day: string;
       summary: string;
+      tempMin: number | null;
+      tempMax: number | null;
+      precipitationProbability: number | null;
+      windSpeed: number | null;
+    }>;
+    alerts?: Array<{
+      type: string;
+      severity: "info" | "warning" | "critical";
+      day: string;
+      message: string;
     }>;
   };
   insight: {
@@ -243,6 +258,9 @@ export default function Home() {
 
   const handleAuthSuccess = (authData: any) => {
     localStorage.setItem("agro_token", authData.access_token);
+    if (authData?.user?.id) {
+      localStorage.setItem("agro_user_id", authData.user.id);
+    }
     setIsLoggedIn(true);
     fetchDashboard();
   };
@@ -265,6 +283,7 @@ export default function Home() {
 
   const handleUnauthorized = () => {
     localStorage.removeItem("agro_token");
+    localStorage.removeItem("agro_user_id");
     setIsLoggedIn(false);
     setDashboard(null);
     alert(
@@ -642,6 +661,7 @@ export default function Home() {
         },
       ]
     : [];
+  const weatherPreview = dashboard?.weather?.forecast?.slice(0, 3) || [];
 
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-[#EAF3E7] font-sans">
@@ -873,6 +893,36 @@ export default function Home() {
                           ? "Маусымдық деректер осы жерде шығады."
                           : "Здесь появится сезонная сводка.")}
                     </p>
+                  </div>
+                  <div className="mt-3 rounded-[1.4rem] bg-[#F5F8F1] px-4 py-4">
+                    <p className="text-sm font-black text-[#18351D]">
+                      {language === "kk" ? "Ауа райы" : "Погода"}
+                    </p>
+                    <p className="mt-2 text-sm text-[#2F6B3D]/72">
+                      {weatherSummary}
+                    </p>
+                    {weatherPreview.length > 0 ? (
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        {weatherPreview.map((item) => (
+                          <div
+                            key={item.day}
+                            className="rounded-[1rem] bg-white px-3 py-3"
+                          >
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#2F6B3D]/45">
+                              {item.day.slice(5)}
+                            </p>
+                            <p className="mt-1 text-sm font-black text-[#17381C]">
+                              {item.tempMax !== null
+                                ? `${Math.round(item.tempMax)}°`
+                                : "n/a"}
+                            </p>
+                            <p className="mt-1 text-[11px] leading-snug text-[#2F6B3D]/68">
+                              {item.summary}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </Card>
 

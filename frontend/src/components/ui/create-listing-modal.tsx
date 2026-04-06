@@ -20,6 +20,11 @@ export default function CreateListingModal({
   language,
 }: CreateListingModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [marketGuidance, setMarketGuidance] = useState<{
+    title?: string | null;
+    message?: string | null;
+    actions?: string[] | null;
+  } | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     category: language === "kk" ? "Көкөніс" : "Овощи",
@@ -37,7 +42,7 @@ export default function CreateListingModal({
       ? {
           needLogin: "Жүйеге кіріңіз",
           hidden:
-            "Жарияланым жасалды, бірақ бәсеке төмен болғандықтан жалпы маркеттен жасырылды.",
+            "Жарияланым жасалды. Жүйе нарық қызығушылығы төмен болуы мүмкін екенін ескертті.",
           visible: "Жарияланым жасалды және маркетте көрініп тұр.",
           errorCreate: "Жарияланым жасау қатесі: ",
           errorSend: "Деректерді жіберу мүмкін болмады.",
@@ -45,7 +50,7 @@ export default function CreateListingModal({
           title: "Өнімді жариялау",
           smart: "Ақылды көріну",
           smartText:
-            "Жарияланым жасалғаннан кейін жүйе бәсекені бағалайды. Егер бәсеке төмен болса, позицияны маркеттен жасыра алады.",
+            "Жарияланым жасалғаннан кейін жүйе бәсеке мен нарық қызығушылығын бағалайды. Енді жүйе автоматты түрде өшірмейді, тек ақылды ұсыныс береді.",
           fieldTitle: "Атауы",
           category: "Санат",
           crop: "Дақыл",
@@ -67,7 +72,7 @@ export default function CreateListingModal({
       : {
           needLogin: "Пожалуйста, войдите в систему",
           hidden:
-            "Объявление создано, но скрыто из общего маркетплейса из-за низкой конкуренции.",
+            "Объявление создано. Система предупредила, что рыночный интерес может быть низким.",
           visible: "Объявление создано и доступно в общем маркетплейсе.",
           errorCreate: "Ошибка при создании объявления: ",
           errorSend: "Не удалось отправить данные.",
@@ -75,7 +80,7 @@ export default function CreateListingModal({
           title: "Публикация из хозяйства",
           smart: "Умная видимость",
           smartText:
-            "После публикации система оценивает конкуренцию. Если конкуренция низкая, позиция может быть скрыта из общего маркета.",
+            "После публикации система оценивает конкуренцию и рыночный интерес. Теперь позиция не скрывается автоматически, а получает умную рекомендацию.",
           fieldTitle: "Название",
           category: "Категория",
           crop: "Культура",
@@ -132,11 +137,24 @@ export default function CreateListingModal({
       if (res.ok && json) {
         const visibilityStatus = json.visibilityStatus as string | undefined;
         const visibilityReason = json.visibilityReason as string | undefined;
+        const recommendationTitle = json.recommendationTitle as string | undefined;
+        const recommendationMessage = json.recommendationMessage as string | undefined;
+        const recommendedActions = json.recommendedActions as string[] | undefined;
+
+        setMarketGuidance({
+          title: recommendationTitle,
+          message: recommendationMessage || visibilityReason,
+          actions: recommendedActions || [],
+        });
 
         if (visibilityStatus === "hidden") {
           alert(visibilityReason || copy.hidden);
         } else if (visibilityStatus === "visible") {
-          alert(visibilityReason || copy.visible);
+          alert(
+            recommendationMessage ||
+              visibilityReason ||
+              copy.visible,
+          );
         }
 
         onSuccess();
@@ -172,6 +190,32 @@ export default function CreateListingModal({
         </div>
 
         <div className="overflow-y-auto px-6 py-6">
+          {marketGuidance && (
+            <div className="mb-5 rounded-[1.8rem] border border-[#D9B44A]/30 bg-[#FBF6E7] px-5 py-4 text-[#17381C]">
+              <div className="mb-2 flex items-center gap-2">
+                <Check className="size-4 text-[#A78018]" />
+                <span className="text-[10px] font-black uppercase tracking-[0.22em] text-[#A78018]">
+                  {marketGuidance.title || copy.smart}
+                </span>
+              </div>
+              <p className="text-sm leading-relaxed">
+                {marketGuidance.message}
+              </p>
+              {marketGuidance.actions?.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {marketGuidance.actions.map((action) => (
+                    <span
+                      key={action}
+                      className="rounded-full bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#17381C]"
+                    >
+                      {action}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )}
+
           <div className="mb-5 rounded-[1.8rem] bg-[#17381C] px-5 py-4 text-white">
             <div className="mb-2 flex items-center gap-2">
               <Sprout className="size-4 text-[#D9B44A]" />

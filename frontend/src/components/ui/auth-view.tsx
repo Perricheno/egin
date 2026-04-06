@@ -97,6 +97,7 @@ export default function AuthView({ onSuccess, language }: AuthViewProps) {
         const authData = data.data || data;
         if (authData.access_token) {
           if (authData.user) {
+            localStorage.setItem("agro_user_id", authData.user.id || "");
             localStorage.setItem("agro_user_phone", authData.user.phone || phone);
             localStorage.setItem("agro_user_role", authData.user.role || "farmer");
             localStorage.setItem("agro_user_region", authData.user.region || "");

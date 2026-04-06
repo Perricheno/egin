@@ -7,6 +7,7 @@ import {
   MarketplaceListing,
 } from '../marketplace/entities/marketplace-listing.entity';
 import { User } from '../users/entities/user.entity';
+import { WeatherService } from '../weather/weather.service';
 
 type CompetitionLevel = 'low' | 'medium' | 'high';
 
@@ -128,6 +129,7 @@ export class DashboardService {
     private readonly listingRepository: Repository<MarketplaceListing>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly weatherService: WeatherService,
   ) {}
 
   private getCropProfile(cropName: string | null) {
@@ -215,6 +217,25 @@ export class DashboardService {
       message: `По культуре "${cropName}" конкуренция низкая. Это хороший кандидат для фокусной посадки, но listing можно скрывать по вашей стратегии niche-first.`,
       confidence: 0.72,
     };
+  }
+
+  private formatWeatherSummary(today: {
+    temperature: number | null;
+    precipitationProbability: number | null;
+    summary: string;
+  } | null) {
+    if (!today) {
+      return 'Погодные данные временно недоступны.';
+    }
+
+    const temp =
+      today.temperature !== null ? `${Math.round(today.temperature)}°C` : 'n/a';
+    const precipitation =
+      today.precipitationProbability !== null
+        ? `${Math.round(today.precipitationProbability)}%`
+        : 'n/a';
+
+    return `Сегодня: ${temp}, осадки: ${precipitation}, ${today.summary.toLowerCase()}.`;
   }
 
   async getHomeDashboard(userId: string) {
@@ -348,6 +369,87 @@ export class DashboardService {
     );
     const currentMonth = new Date().getMonth() + 1;
     const season = this.getSeasonStatus(currentMonth);
+    const weatherCoords = this.weatherService.getRegionCoordinates(user?.region);
+    let weatherBlock: {
+      status: string;
+      summary: string;
+      today: {
+        temperature: number | null;
+        precipitationProbability: number | null;
+        windSpeed: number | null;
+        summary: string;
+      } | null;
+      forecast: Array<{
+        day: string;
+        summary: string;
+        tempMin: number | null;
+        tempMax: number | null;
+        precipitationProbability: number | null;
+        windSpeed: number | null;
+      }>;
+      alerts?: Array<{
+        type: string;
+        severity: 'info' | 'warning' | 'critical';
+        day: string;
+        message: string;
+      }>;
+    } = {
+      status: 'pending_provider',
+      summary:
+        'Погодный провайдер еще не подключен. На следующем этапе сюда добавим текущую погоду, 3/7-дневный прогноз и агро-предупреждения.',
+      today: null,
+      forecast: [],
+    };
+
+    if (weatherCoords) {
+      try {
+        const forecastResult = await this.weatherService.getForecast(
+          weatherCoords.lat,
+          weatherCoords.lng,
+          7,
+        );
+        const forecastItems = forecastResult.forecast ?? [];
+        const firstDay = forecastItems[0] ?? null;
+
+        weatherBlock = {
+          status: 'live',
+          summary: this.formatWeatherSummary(
+            firstDay
+              ? {
+                  temperature: firstDay.tempMax,
+                  precipitationProbability: firstDay.precipitationProbability,
+                  summary: firstDay.summary,
+                }
+              : null,
+          ),
+          today: firstDay
+            ? {
+                temperature: firstDay.tempMax,
+                precipitationProbability: firstDay.precipitationProbability,
+                windSpeed: firstDay.windSpeed,
+                summary: firstDay.summary,
+              }
+            : null,
+          forecast: forecastItems.slice(0, 3).map((item) => ({
+            day: item.day,
+            summary: item.summary,
+            tempMin: item.tempMin,
+            tempMax: item.tempMax,
+            precipitationProbability: item.precipitationProbability,
+            windSpeed: item.windSpeed,
+          })),
+          alerts: forecastResult.alerts ?? [],
+        };
+      } catch {
+        weatherBlock = {
+          status: 'provider_error',
+          summary:
+            'Не удалось получить погоду от внешнего провайдера. Проверьте доступ к сети и настройки weather API.',
+          today: null,
+          forecast: [],
+        };
+      }
+    }
 
     const cropAnalysis = dominantCrop
       ? {
@@ -466,13 +568,7 @@ export class DashboardService {
         activeListings,
       },
       crops: cropSummaries,
-      weather: {
-        status: 'pending_provider',
-        summary:
-          'Погодный провайдер еще не подключен. На следующем этапе сюда добавим текущую погоду, 3/7-дневный прогноз и агро-предупреждения.',
-        today: null,
-        forecast: [],
-      },
+      weather: weatherBlock,
       insight,
       cropAnalysis,
       forecasts,

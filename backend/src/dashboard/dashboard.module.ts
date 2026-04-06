@@ -3,11 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { FarmPlot } from '../farm-plots/entities/farm-plot.entity';
 import { MarketplaceListing } from '../marketplace/entities/marketplace-listing.entity';
 import { User } from '../users/entities/user.entity';
+import { WeatherModule } from '../weather/weather.module';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([FarmPlot, MarketplaceListing, User])],
+  imports: [
+    TypeOrmModule.forFeature([FarmPlot, MarketplaceListing, User]),
+    WeatherModule,
+  ],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

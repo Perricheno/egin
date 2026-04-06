@@ -5,10 +5,13 @@ import {
   ArrowDownAZ,
   ArrowUpZA,
   CalendarDays,
+  ChevronLeft,
   Clock3,
   Eye,
   EyeOff,
+  MessageCircle,
   MapPin,
+  Send,
   Plus,
   RefreshCw,
   Search,
@@ -16,6 +19,7 @@ import {
   ShoppingBasket,
   Sparkles,
   Wallet,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,12 +40,53 @@ type Listing = {
   availableFrom: string;
   location: string;
   farmer?: {
+    id?: string;
     fullName?: string;
+    region?: string;
   };
   visibilityStatus?: "visible" | "hidden";
   competitionLevel?: "low" | "medium" | "high" | null;
   visibilityReason?: string | null;
+  recommendationStatus?: "healthy" | "caution" | "low_interest" | null;
+  recommendationTitle?: string | null;
+  recommendationMessage?: string | null;
+  recommendedActions?: string[] | null;
   status?: string;
+};
+
+type ChatListItem = {
+  id: string;
+  listingId: string | null;
+  participants: Array<{
+    userId: string;
+    fullName: string;
+    role: string | null;
+    region: string | null;
+  }>;
+  lastMessage: {
+    id: string;
+    body: string;
+    senderId: string;
+    createdAt: string;
+  } | null;
+};
+
+type ChatDetail = {
+  id: string;
+  listingId: string | null;
+  participants: Array<{
+    userId: string;
+    fullName: string;
+    role: string | null;
+    region: string | null;
+  }>;
+  messages: Array<{
+    id: string;
+    senderId: string;
+    body: string;
+    type: string;
+    createdAt: string;
+  }>;
 };
 
 const listingVisuals = (title: string, category: string) => {
@@ -88,6 +133,14 @@ export default function MarketView({
   const [activeCategory, setActiveCategory] = useState("Все");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chats, setChats] = useState<ChatListItem[]>([]);
+  const [activeChat, setActiveChat] = useState<ChatDetail | null>(null);
+  const [isChatsLoading, setIsChatsLoading] = useState(false);
+  const [isChatCreating, setIsChatCreating] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [chatMessage, setChatMessage] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<"createdAt" | "price">("createdAt");
@@ -113,6 +166,9 @@ export default function MarketView({
           live: "Белсенділер",
           myListings: "Менің жарияланымдарым",
           hidden: "AI жасырған",
+          lowInterest: "Төмен қызығушылық",
+          caution: "Ескерту",
+          healthy: "Нарықта дұрыс",
           visibleNow: "Қазір көрінеді",
           verified: "Тексерілгендер",
           negotiation: "Келіссөз",
@@ -123,6 +179,20 @@ export default function MarketView({
           currency: "Валюта",
           dealMode: "Келісім режимі",
           direct: "Тікелей келіссөз ашу",
+          chats: "Чаттар",
+          openChats: "Чаттарды ашу",
+          chatEmpty: "Чаттар әзірге жоқ",
+          chatEmptyHint: "Тауар карточкасынан сатушымен тікелей сөйлесуді бастаңыз.",
+          chatLogin: "Чатты қолдану үшін жүйеге кіріңіз.",
+          messagePlaceholder: "Хабарлама жазыңыз...",
+          quickAvailability: "Бар ма?",
+          quickQuantity: "Қанша тонна?",
+          quickDelivery: "Жеткізу бар ма?",
+          quickLocation: "Қайдасыз?",
+          startChatError: "Чатты ашу мүмкін болмады.",
+          sendError: "Хабар жіберілмеді.",
+          noMessages: "Әзірге хабар жоқ",
+          chatWith: "Чат",
           noMine: "Сізде әзірге жарияланым жоқ",
           noPublic: "Жарияланым табылмады",
           noMineHint:
@@ -154,6 +224,9 @@ export default function MarketView({
           live: "Активные",
           myListings: "Мои объявления",
           hidden: "Скрыто AI",
+          lowInterest: "Низкий интерес",
+          caution: "Предупреждение",
+          healthy: "Нормально для рынка",
           visibleNow: "Видны сейчас",
           verified: "Проверенные",
           negotiation: "Переговоры",
@@ -164,6 +237,20 @@ export default function MarketView({
           currency: "Валюта",
           dealMode: "Режим сделки",
           direct: "Открыть прямые переговоры",
+          chats: "Чаты",
+          openChats: "Открыть чаты",
+          chatEmpty: "Чатов пока нет",
+          chatEmptyHint: "Начните прямой диалог с продавцом из карточки товара.",
+          chatLogin: "Чтобы пользоваться чатом, войдите в систему.",
+          messagePlaceholder: "Напишите сообщение...",
+          quickAvailability: "Есть в наличии?",
+          quickQuantity: "Сколько тонн?",
+          quickDelivery: "Доставка есть?",
+          quickLocation: "Где находитесь?",
+          startChatError: "Не удалось открыть чат.",
+          sendError: "Не удалось отправить сообщение.",
+          noMessages: "Сообщений пока нет",
+          chatWith: "Чат",
           noMine: "У вас пока нет объявлений",
           noPublic: "Объявления не найдены",
           noMineHint:
@@ -179,6 +266,130 @@ export default function MarketView({
           grains: "Зерновые",
           other: "Прочее",
         };
+
+  const fetchChats = async (preferredChatId?: string) => {
+    const token = localStorage.getItem("agro_token");
+    if (!token) {
+      setChats([]);
+      setActiveChat(null);
+      return;
+    }
+
+    setIsChatsLoading(true);
+    try {
+      const res = await fetch(apiUrl("/chats"), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const json = await res.json();
+      const data = Array.isArray(json?.data) ? json.data : [];
+      setChats(data);
+
+      const chatIdToOpen = preferredChatId || activeChat?.id || data[0]?.id;
+      if (chatIdToOpen) {
+        await openChat(chatIdToOpen, token);
+      } else {
+        setActiveChat(null);
+      }
+    } catch {
+      setChats([]);
+      setActiveChat(null);
+    } finally {
+      setIsChatsLoading(false);
+    }
+  };
+
+  const openChat = async (chatId: string, tokenArg?: string) => {
+    const token = tokenArg || localStorage.getItem("agro_token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(apiUrl(`/chats/${chatId}/messages`), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const json = await res.json();
+      if (res.ok && json?.data) {
+        setActiveChat(json.data);
+      }
+    } catch {}
+  };
+
+  const startDirectChat = async () => {
+    const token = localStorage.getItem("agro_token");
+    if (!token) {
+      alert(marketCopy.chatLogin);
+      return;
+    }
+
+    if (!selectedListing?.farmer?.id) {
+      alert(marketCopy.startChatError);
+      return;
+    }
+
+    setIsChatCreating(true);
+    try {
+      const res = await fetch(apiUrl("/chats/direct"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          participantUserId: selectedListing.farmer.id,
+          listingId: selectedListing.id,
+        }),
+      });
+      const json = await res.json();
+
+      if (!res.ok || !json?.data?.id) {
+        alert(marketCopy.startChatError);
+        return;
+      }
+
+      setSelectedListing(null);
+      setIsChatOpen(true);
+      await fetchChats(json.data.id);
+    } catch {
+      alert(marketCopy.startChatError);
+    } finally {
+      setIsChatCreating(false);
+    }
+  };
+
+  const sendMessage = async (body: string) => {
+    const token = localStorage.getItem("agro_token");
+    if (!token || !activeChat || !body.trim()) return;
+
+    setIsSendingMessage(true);
+    try {
+      const res = await fetch(apiUrl(`/chats/${activeChat.id}/messages`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          body: body.trim(),
+          type: "text",
+        }),
+      });
+
+      if (!res.ok) {
+        alert(marketCopy.sendError);
+        return;
+      }
+
+      setChatMessage("");
+      await fetchChats(activeChat.id);
+    } catch {
+      alert(marketCopy.sendError);
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
 
   const fetchMarketData = async (manualRefresh = false) => {
     if (manualRefresh) setIsRefreshing(true);
@@ -240,6 +451,16 @@ export default function MarketView({
   useEffect(() => {
     setActiveCategory(marketCopy.all);
   }, [language]);
+
+  useEffect(() => {
+    setCurrentUserId(localStorage.getItem("agro_user_id"));
+  }, []);
+
+  useEffect(() => {
+    if (isChatOpen) {
+      fetchChats();
+    }
+  }, [isChatOpen]);
 
   const toggleSort = () => {
     if (sortBy === "createdAt") {
@@ -337,6 +558,16 @@ export default function MarketView({
                 </Button>
               </div>
 
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => setIsChatOpen(true)}
+                  className="h-11 rounded-full bg-white/12 px-4 font-black text-white backdrop-blur-xl hover:bg-white/18"
+                >
+                  <MessageCircle className="mr-2 size-4" />
+                  {marketCopy.openChats}
+                </Button>
+              </div>
+
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {[
                   { key: "public", label: "Рынок" },
@@ -388,10 +619,12 @@ export default function MarketView({
               icon: ShoppingBasket,
             },
             {
-              label: marketMode === "mine" ? marketCopy.hidden : marketCopy.verified,
+              label: marketMode === "mine" ? marketCopy.caution : marketCopy.verified,
               value:
                 marketMode === "mine"
-                  ? myListings.filter((item) => item.visibilityStatus === "hidden").length
+                  ? myListings.filter(
+                      (item) => item.recommendationStatus === "caution",
+                    ).length
                   : listings.filter((item) => item.farmer?.fullName).length,
               icon: marketMode === "mine" ? EyeOff : ShieldCheck,
             },
@@ -442,7 +675,7 @@ export default function MarketView({
                   <Card
                     key={item.id}
                     className={`overflow-hidden rounded-[2rem] border-none p-0 shadow-[0_18px_50px_rgba(13,30,17,0.08)] transition-all hover:-translate-y-1 ${
-                      item.visibilityStatus === "hidden"
+                      item.recommendationStatus === "low_interest"
                         ? "bg-[#F2EEE7]"
                         : "bg-white/92"
                     }`}
@@ -465,14 +698,18 @@ export default function MarketView({
                         {marketMode === "mine" && (
                           <div
                             className={`absolute right-4 top-4 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${
-                              item.visibilityStatus === "hidden"
+                              item.recommendationStatus === "low_interest"
                                 ? "bg-[#17381C] text-white"
-                                : "bg-[#D9B44A] text-[#17381C]"
+                                : item.recommendationStatus === "caution"
+                                  ? "bg-[#D9B44A] text-[#17381C]"
+                                  : "bg-[#DFF2E1] text-[#1F5A2B]"
                             }`}
                           >
-                            {item.visibilityStatus === "hidden"
-                              ? marketCopy.hiddenStatus
-                              : marketCopy.visible}
+                            {item.recommendationStatus === "low_interest"
+                              ? marketCopy.lowInterest
+                              : item.recommendationStatus === "caution"
+                                ? marketCopy.caution
+                                : marketCopy.healthy}
                           </div>
                         )}
                         <div className="absolute left-4 right-4 bottom-4 flex items-end justify-between gap-3 text-white">
@@ -516,9 +753,26 @@ export default function MarketView({
                         </div>
 
                         <div className="space-y-2 text-sm text-[#2F6B3D]/72">
-                          {marketMode === "mine" && item.visibilityReason && (
+                          {marketMode === "mine" && (item.recommendationMessage || item.visibilityReason) && (
                             <div className="rounded-[1.2rem] bg-[#F5F1E8] px-4 py-3 text-sm leading-relaxed text-[#2F6B3D]/72">
-                              {item.visibilityReason}
+                              <p className="font-black text-[#17381C]">
+                                {item.recommendationTitle || marketCopy.caution}
+                              </p>
+                              <p className="mt-1">
+                                {item.recommendationMessage || item.visibilityReason}
+                              </p>
+                              {item.recommendedActions?.length ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {item.recommendedActions.map((action) => (
+                                    <span
+                                      key={action}
+                                      className="rounded-full bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#17381C]"
+                                    >
+                                      {action}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
                             </div>
                           )}
                           <div className="flex items-center gap-2">
@@ -636,9 +890,195 @@ export default function MarketView({
                 </p>
               )}
 
-              <Button className="h-14 w-full rounded-[1.4rem] bg-[#17381C] font-black text-white hover:bg-[#214a28]">
+              {(selectedListing.recommendationMessage || selectedListing.visibilityReason) && (
+                <div className="rounded-[1.4rem] bg-[#FBF6E7] px-4 py-4 text-sm leading-relaxed text-[#2F6B3D]/78">
+                  <p className="font-black text-[#17381C]">
+                    {selectedListing.recommendationTitle || marketCopy.caution}
+                  </p>
+                  <p className="mt-1">
+                    {selectedListing.recommendationMessage || selectedListing.visibilityReason}
+                  </p>
+                  {selectedListing.recommendedActions?.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedListing.recommendedActions.map((action) => (
+                        <span
+                          key={action}
+                          className="rounded-full bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#17381C]"
+                        >
+                          {action}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              <Button
+                onClick={startDirectChat}
+                disabled={isChatCreating}
+                className="h-14 w-full rounded-[1.4rem] bg-[#17381C] font-black text-white hover:bg-[#214a28]"
+              >
+                <MessageCircle className="size-4" />
                 {marketCopy.start}
               </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {isChatOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm sm:items-center">
+          <Card className="flex h-[90vh] w-full max-w-5xl overflow-hidden rounded-[2rem] border-none bg-[#F4EFE6] p-0 shadow-[0_30px_100px_rgba(13,30,17,0.3)]">
+            <div className="flex w-full flex-col md:flex-row">
+              <div className="w-full border-b border-black/5 bg-white/75 md:w-[20rem] md:border-b-0 md:border-r">
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#2F6B3D]/45">
+                      {marketCopy.chats}
+                    </p>
+                    <h2 className="mt-1 text-xl font-black text-[#17381C]">
+                      {marketCopy.chatWith}
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsChatOpen(false)}
+                    className="flex size-10 items-center justify-center rounded-full bg-[#F5F1E8] text-[#17381C]"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+
+                <div className="max-h-[28vh] overflow-y-auto px-3 pb-3 md:max-h-[calc(90vh-5rem)]">
+                  {isChatsLoading ? (
+                    <div className="px-3 py-6 text-sm text-[#2F6B3D]/60">
+                      Loading...
+                    </div>
+                  ) : chats.length > 0 ? (
+                    <div className="space-y-2">
+                      {chats.map((chat) => {
+                        const title =
+                          chat.participants[0]?.fullName || marketCopy.seller;
+                        return (
+                          <button
+                            key={chat.id}
+                            type="button"
+                            onClick={() => openChat(chat.id)}
+                            className={`w-full rounded-[1.2rem] px-3 py-3 text-left transition-colors ${
+                              activeChat?.id === chat.id
+                                ? "bg-[#17381C] text-white"
+                                : "bg-white text-[#17381C] hover:bg-[#F5F1E8]"
+                            }`}
+                          >
+                            <p className="text-sm font-black">{title}</p>
+                            <p
+                              className={`mt-1 line-clamp-2 text-xs ${
+                                activeChat?.id === chat.id
+                                  ? "text-white/72"
+                                  : "text-[#2F6B3D]/62"
+                              }`}
+                            >
+                              {chat.lastMessage?.body || marketCopy.noMessages}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-[1.2rem] bg-white px-4 py-5 text-sm text-[#2F6B3D]/72">
+                      <p className="font-black text-[#17381C]">
+                        {marketCopy.chatEmpty}
+                      </p>
+                      <p className="mt-2">{marketCopy.chatEmptyHint}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="flex items-center justify-between border-b border-black/5 bg-white/60 px-5 py-4">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#2F6B3D]/45">
+                      {marketCopy.chatWith}
+                    </p>
+                    <h3 className="truncate text-lg font-black text-[#17381C]">
+                      {activeChat?.participants.find(
+                        (participant) => participant.userId !== currentUserId,
+                      )?.fullName ||
+                        activeChat?.participants[0]?.fullName ||
+                        marketCopy.seller}
+                    </h3>
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                  {activeChat?.messages?.length ? (
+                    <div className="space-y-3">
+                      {activeChat.messages.map((message) => (
+                        <div
+                          key={message.id}
+                          className={`flex ${
+                            message.senderId === currentUserId
+                              ? "justify-end"
+                              : "justify-start"
+                          }`}
+                        >
+                          <div className="max-w-[85%] rounded-[1.2rem] bg-white px-4 py-3 text-sm text-[#17381C] shadow-sm">
+                            {message.body}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <div className="rounded-[1.3rem] bg-white px-5 py-4 text-center text-sm text-[#2F6B3D]/72 shadow-sm">
+                        {marketCopy.noMessages}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {activeChat && (
+                  <>
+                    <div className="flex flex-wrap gap-2 border-t border-black/5 px-4 pt-4">
+                      {[marketCopy.quickAvailability, marketCopy.quickQuantity, marketCopy.quickDelivery, marketCopy.quickLocation].map((quickMessage) => (
+                        <button
+                          key={quickMessage}
+                          type="button"
+                          onClick={() => sendMessage(quickMessage)}
+                          className="rounded-full bg-white px-3 py-2 text-xs font-black text-[#17381C] shadow-sm transition-colors hover:bg-[#F5F1E8]"
+                        >
+                          {quickMessage}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="border-t border-black/5 px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="text"
+                          value={chatMessage}
+                          onChange={(e) => setChatMessage(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              sendMessage(chatMessage);
+                            }
+                          }}
+                          placeholder={marketCopy.messagePlaceholder}
+                          className="h-13 flex-1 rounded-full border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                        />
+                        <Button
+                          onClick={() => sendMessage(chatMessage)}
+                          disabled={isSendingMessage || !chatMessage.trim()}
+                          className="h-13 rounded-full bg-[#17381C] px-4 font-black text-white hover:bg-[#214a28]"
+                        >
+                          <Send className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </Card>
         </div>
