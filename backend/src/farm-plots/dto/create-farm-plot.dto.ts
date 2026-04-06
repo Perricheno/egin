@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PlantingStatus } from '../entities/farm-plot.entity';
 
@@ -44,6 +51,11 @@ export class CreateFarmPlotDto {
   @ApiProperty({ example: 2024 })
   @IsNumber()
   seasonYear: number;
+
+  @ApiPropertyOptional({ example: '2026-04-06' })
+  @IsOptional()
+  @IsDateString()
+  plantingDate?: string;
 
   @ApiPropertyOptional({ enum: PlantingStatus, default: PlantingStatus.PLANNED })
   @IsEnum(PlantingStatus)

@@ -727,31 +727,31 @@ const Map = forwardRef<MapRef, MapProps>(
           />
         )}
         <div ref={mapContainer} className="h-full w-full" />
-        <div className="absolute bottom-40 left-6 z-20 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] lg:left-[120px] lg:bottom-10">
+        <div className="absolute bottom-40 left-5 z-20 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] lg:left-[120px] lg:bottom-10">
           <button
             type="button"
             onClick={() => setIsLayersOpen((open) => !open)}
-            className="flex w-32 flex-col overflow-hidden rounded-[1.5rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md border border-white/20 transition-all active:scale-95"
+            className="flex w-28 flex-col overflow-hidden rounded-[1.3rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md border border-white/20 transition-all active:scale-95"
           >
-            <div className={`h-20 w-full ${baseMapMode === "satellite" ? "bg-[radial-gradient(circle_at_30%_30%,#56714b,transparent_35%),linear-gradient(135deg,#1d2a1d_0%,#415d3b_25%,#8a7b5c_55%,#2d3629_100%)]" : "bg-[linear-gradient(135deg,#d7ead6_0%,#eef5e8_42%,#bcd7b8_42%,#dcead8_100%)]" }`} />
-            <div className="px-4 py-3 text-left">
+            <div className={`h-16 w-full ${baseMapMode === "satellite" ? "bg-[radial-gradient(circle_at_30%_30%,#56714b,transparent_35%),linear-gradient(135deg,#1d2a1d_0%,#415d3b_25%,#8a7b5c_55%,#2d3629_100%)]" : "bg-[linear-gradient(135deg,#d7ead6_0%,#eef5e8_42%,#bcd7b8_42%,#dcead8_100%)]" }`} />
+            <div className="px-4 py-2.5 text-left">
               <div className="text-xs font-black uppercase tracking-[0.18em] text-[#2F6B3D]/45">{t?.layers || 'Слои'}</div>
-              <div className="mt-2 text-[0.92rem] leading-tight font-black text-[#2F6B3D] break-words">
+              <div className="mt-1.5 text-[0.84rem] leading-tight font-black text-[#2F6B3D] break-words">
                 {baseMapMode === "simple" ? (t?.simple || 'Схема') : (t?.satellite || 'Спутник')}
               </div>
             </div>
           </button>
           {isLayersOpen && (
-            <div className="mt-3 flex w-48 flex-col gap-2 rounded-[1.5rem] bg-white/95 p-2 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md">
+            <div className="mt-2.5 flex w-40 flex-col gap-2 rounded-[1.3rem] bg-white/95 p-2 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md">
               <button
                 type="button" onClick={() => { setBaseMapMode("simple"); setIsLayersOpen(false); }}
-                className={`rounded-[1.1rem] px-4 py-3 text-left text-sm font-black transition-colors ${baseMapMode === "simple" ? "bg-[#2F6B3D] text-white" : "bg-[#F5F9F4] text-[#2F6B3D] hover:bg-[#E6F0E2]"}`}
+                className={`rounded-[1rem] px-3 py-2.5 text-left text-xs font-black transition-colors ${baseMapMode === "simple" ? "bg-[#2F6B3D] text-white" : "bg-[#F5F9F4] text-[#2F6B3D] hover:bg-[#E6F0E2]"}`}
               >
                 {t?.simpleMap || 'Обычная карта'}
               </button>
               <button
                 type="button" onClick={() => { setBaseMapMode("satellite"); setIsLayersOpen(false); }}
-                className={`rounded-[1.1rem] px-4 py-3 text-left text-sm font-black transition-colors ${baseMapMode === "satellite" ? "bg-[#2F6B3D] text-white" : "bg-[#F5F9F4] text-[#2F6B3D] hover:bg-[#E6F0E2]"}`}
+                className={`rounded-[1rem] px-3 py-2.5 text-left text-xs font-black transition-colors ${baseMapMode === "satellite" ? "bg-[#2F6B3D] text-white" : "bg-[#F5F9F4] text-[#2F6B3D] hover:bg-[#E6F0E2]"}`}
               >
                 {t?.satelliteMap || 'Спутник'}
               </button>

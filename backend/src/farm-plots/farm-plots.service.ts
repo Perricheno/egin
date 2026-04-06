@@ -116,6 +116,7 @@ export class FarmPlotsService {
         ...dto,
         userId,
         geometry: null,
+        plantingDate: dto.plantingDate ? new Date(dto.plantingDate) : null,
       });
 
       const createdPlot = await this.plotRepository.save(plot);
@@ -306,7 +307,13 @@ export class FarmPlotsService {
   }
 
   async update(id: string, updateData: Partial<FarmPlot>): Promise<FarmPlot> {
-    await this.plotRepository.update(id, updateData);
+    await this.plotRepository.update(id, {
+      ...updateData,
+      plantingDate:
+        updateData.plantingDate !== undefined && updateData.plantingDate !== null
+          ? new Date(updateData.plantingDate)
+          : updateData.plantingDate,
+    });
     return this.plotRepository.findOneByOrFail({ id });
   }
 

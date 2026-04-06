@@ -6,8 +6,118 @@ import {
   ListingStatus,
   MarketplaceListing,
 } from '../marketplace/entities/marketplace-listing.entity';
+import { User } from '../users/entities/user.entity';
 
 type CompetitionLevel = 'low' | 'medium' | 'high';
+
+type CropProfile = {
+  color: string;
+  growthDaysMin: number;
+  growthDaysMax: number;
+  shelfLifeDays: number;
+  storage: string;
+  watering: string;
+  soil: string;
+  disease: string;
+  temperature: string;
+  lifehack: string;
+  commonMistake: string;
+};
+
+const DEFAULT_CROP_PROFILE: CropProfile = {
+  color: '#D9B44A',
+  growthDaysMin: 90,
+  growthDaysMax: 120,
+  shelfLifeDays: 30,
+  storage: 'Сухое хранение без резких перепадов температуры.',
+  watering: 'Следите за равномерной влажностью без перелива.',
+  soil: 'Лучше растет на рыхлой и подготовленной почве.',
+  disease: 'Проводите регулярный осмотр на болезни и вредителей.',
+  temperature: 'Избегайте резких температурных стрессов.',
+  lifehack: 'Делайте осмотры по календарю роста, а не только по факту проблем.',
+  commonMistake: 'Поздняя реакция на стресс культуры и неравномерный полив.',
+};
+
+const CROP_PROFILES: Record<string, CropProfile> = {
+  Картофель: {
+    color: '#8B6A3E',
+    growthDaysMin: 80,
+    growthDaysMax: 120,
+    shelfLifeDays: 120,
+    storage: 'Хранить в сухом, темном и хорошо проветриваемом месте.',
+    watering: 'Не переливать в прохладную погоду, держать почву умеренно влажной.',
+    soil: 'Нужна рыхлая почва и окучивание на активной стадии роста.',
+    disease: 'Следить за фитофторой и состоянием ботвы.',
+    temperature: 'При резкой жаре контролировать пересыхание почвы.',
+    lifehack: 'Окучивание и ранний контроль сорняков заметно повышают итоговый урожай.',
+    commonMistake: 'Избыточный полив при прохладе и поздняя реакция на фитофтору.',
+  },
+  Лук: {
+    color: '#8E44AD',
+    growthDaysMin: 90,
+    growthDaysMax: 150,
+    shelfLifeDays: 180,
+    storage: 'После просушки хранить в сухом помещении с низкой влажностью.',
+    watering: 'Снижать полив ближе к созреванию.',
+    soil: 'Любит легкую и не переувлажненную почву.',
+    disease: 'Проверять на грибковые заболевания и гниль шейки.',
+    temperature: 'Избегать длительного застоя влаги в прохладные периоды.',
+    lifehack: 'Сокращение полива перед уборкой улучшает лежкость.',
+    commonMistake: 'Затяжной полив перед сбором и плохая просушка.',
+  },
+  Пшеница: {
+    color: '#D4AF37',
+    growthDaysMin: 90,
+    growthDaysMax: 130,
+    shelfLifeDays: 240,
+    storage: 'Хранить сухим зерном с контролем влажности.',
+    watering: 'Ключевой контроль влаги нужен в критические стадии развития.',
+    soil: 'Важны подготовка поля и питание на старте.',
+    disease: 'Следить за ржавчиной и грибковыми болезнями.',
+    temperature: 'Жара в период налива зерна снижает качество.',
+    lifehack: 'Контроль питания и сроков обработки сильнее влияет на доход, чем поздние меры.',
+    commonMistake: 'Поздние обработки и недооценка стресса в фазе налива.',
+  },
+  Помидоры: {
+    color: '#C0392B',
+    growthDaysMin: 75,
+    growthDaysMax: 110,
+    shelfLifeDays: 14,
+    storage: 'Хранить недолго, быстро направлять в продажу или логистику.',
+    watering: 'Полив равномерный, без резких скачков влажности.',
+    soil: 'Нужна питательная почва и контроль вентиляции.',
+    disease: 'Следить за фитофторой и растрескиванием плодов.',
+    temperature: 'Сильная жара резко повышает стресс и риск потери качества.',
+    lifehack: 'Стабильная влажность помогает удерживать качество плода.',
+    commonMistake: 'Редкий, но слишком обильный полив.',
+  },
+  Кукуруза: {
+    color: '#E67E22',
+    growthDaysMin: 90,
+    growthDaysMax: 140,
+    shelfLifeDays: 120,
+    storage: 'После сушки хранить с контролем влажности.',
+    watering: 'Особенно важна в фазе активного роста и налива.',
+    soil: 'Нужна почва с хорошим питанием и стартовой подготовкой.',
+    disease: 'Следить за стеблевыми и листовыми поражениями.',
+    temperature: 'Жара и ветер повышают риск потери влаги.',
+    lifehack: 'Контроль влаги в пиковые фазы сильнее влияет на урожай, чем поздние подкормки.',
+    commonMistake: 'Недостаток влаги в период активного роста.',
+  },
+  Арбуз: {
+    color: '#2E8B57',
+    growthDaysMin: 80,
+    growthDaysMax: 110,
+    shelfLifeDays: 21,
+    storage: 'Хранить недолго, избегать ударов и перегрева при перевозке.',
+    watering: 'Поддерживать влагу равномерно, но не переувлажнять.',
+    soil: 'Лучше работает на теплой, легкой почве.',
+    disease: 'Следить за гнилями и состоянием плетей.',
+    temperature: 'Резкие похолодания тормозят развитие.',
+    lifehack: 'Контроль нагрузки плодов помогает улучшить товарный размер.',
+    commonMistake: 'Переувлажнение в сочетании с прохладной погодой.',
+  },
+};
 
 @Injectable()
 export class DashboardService {
@@ -16,7 +126,49 @@ export class DashboardService {
     private readonly plotRepository: Repository<FarmPlot>,
     @InjectRepository(MarketplaceListing)
     private readonly listingRepository: Repository<MarketplaceListing>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
+
+  private getCropProfile(cropName: string | null) {
+    if (!cropName) {
+      return DEFAULT_CROP_PROFILE;
+    }
+
+    return CROP_PROFILES[cropName] ?? DEFAULT_CROP_PROFILE;
+  }
+
+  private getSeasonStatus(month: number) {
+    if (month >= 3 && month <= 5) {
+      return {
+        code: 'planting',
+        title: 'Посев и подготовка',
+        summary: 'Период активной подготовки полей, посадки и первых агроработ.',
+      };
+    }
+
+    if (month >= 6 && month <= 8) {
+      return {
+        code: 'active_growth',
+        title: 'Активный рост',
+        summary: 'Критичный этап контроля влаги, болезней и плотности посевов.',
+      };
+    }
+
+    if (month >= 9 && month <= 11) {
+      return {
+        code: 'harvest',
+        title: 'Сбор и продажа',
+        summary: 'Фокус на сроках уборки, качестве, хранении и каналах сбыта.',
+      };
+    }
+
+    return {
+      code: 'planning',
+      title: 'Планирование сезона',
+      summary: 'Подготовка к следующему циклу: анализ, закупки, выбор культур.',
+    };
+  }
 
   private calculateCompetition(areaSizeHectares: number) {
     const safeArea = Number(areaSizeHectares || 0);
@@ -66,7 +218,10 @@ export class DashboardService {
   }
 
   async getHomeDashboard(userId: string) {
-    const [plots, activeListings] = await Promise.all([
+    const [user, plots, activeListings] = await Promise.all([
+      this.userRepository.findOne({
+        where: { id: userId },
+      }),
       this.plotRepository.find({
         where: { userId },
         order: { createdAt: 'DESC' },
@@ -109,6 +264,36 @@ export class DashboardService {
     const cropSummaries = Array.from(cropBuckets.entries())
       .map(([cropType, data]) => {
         const competition = this.calculateCompetition(data.area);
+        const cropProfile = this.getCropProfile(cropType);
+        const cropPlots = plots.filter((plot) => plot.cropType === cropType);
+        const latestPlantingDate = cropPlots
+          .map((plot) => plot.plantingDate)
+          .filter(Boolean)
+          .sort((left, right) => {
+            return new Date(right as Date).getTime() - new Date(left as Date).getTime();
+          })[0];
+
+        const plantedAt = latestPlantingDate ? new Date(latestPlantingDate) : null;
+        const now = new Date();
+        const daysPassed = plantedAt
+          ? Math.max(
+              0,
+              Math.floor(
+                (now.getTime() - plantedAt.getTime()) / (1000 * 60 * 60 * 24),
+              ),
+            )
+          : 0;
+        const averageGrowthDays = Math.round(
+          (cropProfile.growthDaysMin + cropProfile.growthDaysMax) / 2,
+        );
+        const daysRemaining = plantedAt
+          ? Math.max(0, averageGrowthDays - daysPassed)
+          : averageGrowthDays;
+        const harvestDateEstimate = plantedAt
+          ? new Date(
+              plantedAt.getTime() + averageGrowthDays * 24 * 60 * 60 * 1000,
+            )
+          : null;
 
         return {
           cropType,
@@ -117,6 +302,24 @@ export class DashboardService {
           fillColor: data.fillColor,
           competitionLevel: competition.level,
           competitionScore: competition.score,
+          growthDaysMin: cropProfile.growthDaysMin,
+          growthDaysMax: cropProfile.growthDaysMax,
+          shelfLifeDays: cropProfile.shelfLifeDays,
+          storage: cropProfile.storage,
+          tips: {
+            watering: cropProfile.watering,
+            soil: cropProfile.soil,
+            disease: cropProfile.disease,
+            temperature: cropProfile.temperature,
+            lifehack: cropProfile.lifehack,
+            commonMistake: cropProfile.commonMistake,
+          },
+          plantingDate: plantedAt ? plantedAt.toISOString().slice(0, 10) : null,
+          daysPassed,
+          daysRemaining,
+          harvestDateEstimate: harvestDateEstimate
+            ? harvestDateEstimate.toISOString().slice(0, 10)
+            : null,
         };
       })
       .sort((left, right) => right.areaHectares - left.areaHectares);
@@ -143,8 +346,116 @@ export class DashboardService {
       dominantCrop?.competitionLevel ?? 'low',
       dominantCrop?.cropType ?? null,
     );
+    const currentMonth = new Date().getMonth() + 1;
+    const season = this.getSeasonStatus(currentMonth);
+
+    const cropAnalysis = dominantCrop
+      ? {
+          cropType: dominantCrop.cropType,
+          areaHectares: dominantCrop.areaHectares,
+          growthStage:
+            dominantCrop.daysPassed === 0
+              ? 'Планирование'
+              : dominantCrop.daysRemaining <= 14
+                ? 'Почти готово к сбору'
+                : dominantCrop.daysPassed <= 30
+                  ? 'Ранний рост'
+                  : 'Активный рост',
+          daysUntilHarvest: dominantCrop.daysRemaining,
+          harvestDateEstimate: dominantCrop.harvestDateEstimate,
+          competitionLevel: dominantCrop.competitionLevel,
+          demandLevel:
+            dominantCrop.competitionLevel === 'high'
+              ? 'средний'
+              : 'высокий',
+          projectedIncomeKzt: Math.round(
+            dominantCrop.areaHectares *
+              (dominantCrop.competitionLevel === 'low'
+                ? 420000
+                : dominantCrop.competitionLevel === 'medium'
+                  ? 310000
+                  : 240000),
+          ),
+          recommendation:
+            dominantCrop.competitionLevel === 'high'
+              ? 'Рынок плотный: лучше публиковать частями и следить за ценой.'
+              : dominantCrop.competitionLevel === 'medium'
+                ? 'Можно готовить продажу, но стоит отслеживать соседние посевы и спрос.'
+                : 'Низкая конкуренция: сделайте ставку на локальный спрос и качественную упаковку.',
+        }
+      : null;
+
+    const forecasts = dominantCrop
+      ? {
+          yield: {
+            trend:
+              dominantCrop.competitionLevel === 'high' ? 'stable' : 'upside',
+            summary:
+              dominantCrop.daysRemaining > 20
+                ? 'Есть запас времени улучшить урожайность через контроль влаги и болезней.'
+                : 'Основной фокус уже на качестве сбора и потере после уборки.',
+          },
+          price: {
+            trend:
+              dominantCrop.competitionLevel === 'high' ? 'pressure' : 'healthy',
+            summary:
+              dominantCrop.competitionLevel === 'high'
+                ? 'Цена может быть под давлением из-за насыщенности по культуре.'
+                : 'Цена выглядит устойчивее при локальной продаже и хорошей свежести.',
+          },
+          demand: {
+            trend:
+              dominantCrop.competitionLevel === 'low' ? 'high' : 'medium',
+            summary:
+              dominantCrop.competitionLevel === 'low'
+                ? 'Спрос можно усиливать через локальную выдачу и быструю логистику.'
+                : 'Спрос есть, но придется конкурировать по срокам и качеству.',
+          },
+          competition: {
+            trend: dominantCrop.competitionLevel,
+            summary: insight.message,
+          },
+          harvest: {
+            daysRemaining: dominantCrop.daysRemaining,
+            harvestDateEstimate: dominantCrop.harvestDateEstimate,
+            summary: dominantCrop.harvestDateEstimate
+              ? `Ориентир по сбору: ${dominantCrop.harvestDateEstimate}.`
+              : 'Добавьте дату посадки, чтобы получить более точный ориентир сбора.',
+          },
+        }
+      : null;
+
+    const infoCenter = [
+      {
+        id: 'subsidies',
+        title: 'Субсидии',
+        summary:
+          'Подключим региональные программы, дедлайны и список документов по области пользователя.',
+        status: 'planned',
+      },
+      {
+        id: 'news',
+        title: 'Новости рынка',
+        summary:
+          'Сюда войдут короткие региональные новости, цены и сезонные предупреждения.',
+        status: 'planned',
+      },
+      {
+        id: 'trade',
+        title: 'Экспорт / Импорт',
+        summary:
+          'Блок для логистики, ограничений, цен и требований по внешним рынкам.',
+        status: 'planned',
+      },
+    ];
 
     return {
+      profile: {
+        fullName: user?.fullName ?? 'Фермер',
+        region: user?.region ?? null,
+        district: user?.district ?? null,
+      },
+      season,
       stats: {
         totalPlots: plots.length,
         cropsCount: cropSummaries.length,
@@ -158,9 +469,14 @@ export class DashboardService {
       weather: {
         status: 'pending_provider',
         summary:
-          'Погодный провайдер еще не подключен. На следующем этапе сюда добавим текущую погоду и 7-14 дневный прогноз.',
+          'Погодный провайдер еще не подключен. На следующем этапе сюда добавим текущую погоду, 3/7-дневный прогноз и агро-предупреждения.',
+        today: null,
+        forecast: [],
       },
       insight,
+      cropAnalysis,
+      forecasts,
+      infoCenter,
     };
   }
 

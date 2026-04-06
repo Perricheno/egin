@@ -42,6 +42,16 @@ import { apiUrl } from "@/lib/api";
 type ActiveTab = "home" | "map" | "market" | "profile" | "admin";
 
 type DashboardResponse = {
+  profile: {
+    fullName: string;
+    region: string | null;
+    district: string | null;
+  };
+  season: {
+    code: string;
+    title: string;
+    summary: string;
+  };
   stats: {
     totalPlots: number;
     cropsCount: number;
@@ -58,16 +68,65 @@ type DashboardResponse = {
     fillColor: string | null;
     competitionLevel: "low" | "medium" | "high";
     competitionScore: number;
+    growthDaysMin: number;
+    growthDaysMax: number;
+    shelfLifeDays: number;
+    storage: string;
+    plantingDate: string | null;
+    daysPassed: number;
+    daysRemaining: number;
+    harvestDateEstimate: string | null;
+    tips: {
+      watering: string;
+      soil: string;
+      disease: string;
+      temperature: string;
+      lifehack: string;
+      commonMistake: string;
+    };
   }>;
   weather: {
     status: string;
     summary: string;
+    today: null;
+    forecast: Array<{
+      day: string;
+      summary: string;
+    }>;
   };
   insight: {
     title: string;
     message: string;
     confidence: number;
   };
+  cropAnalysis: {
+    cropType: string;
+    areaHectares: number;
+    growthStage: string;
+    daysUntilHarvest: number;
+    harvestDateEstimate: string | null;
+    competitionLevel: "low" | "medium" | "high";
+    demandLevel: string;
+    projectedIncomeKzt: number;
+    recommendation: string;
+  } | null;
+  forecasts: {
+    yield: { trend: string; summary: string };
+    price: { trend: string; summary: string };
+    demand: { trend: string; summary: string };
+    competition: { trend: string; summary: string };
+    harvest: {
+      daysRemaining: number;
+      harvestDateEstimate: string | null;
+      summary: string;
+    };
+  } | null;
+  infoCenter: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    status: string;
+  }>;
 };
 
 type SavedPlotResult = {
@@ -121,6 +180,9 @@ export default function Home() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [savedPlotResult, setSavedPlotResult] = useState<SavedPlotResult | null>(null);
+  const [selectedCropCard, setSelectedCropCard] = useState<
+    DashboardResponse["crops"][number] | null
+  >(null);
 
   const [isPoleOpen, setIsPoleOpen] = useState(false);
   const [drawnGeometry, setDrawnGeometry] = useState<any>(null);
@@ -152,6 +214,12 @@ export default function Home() {
       const res = await fetch(apiUrl("/dashboard/home"), {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        localStorage.removeItem("agro_token");
+        setIsLoggedIn(false);
+        setDashboard(null);
+        return;
+      }
       const json = await res.json();
       if (json.success && json.data) {
         setDashboard(json.data);
@@ -195,6 +263,17 @@ export default function Home() {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  const handleUnauthorized = () => {
+    localStorage.removeItem("agro_token");
+    setIsLoggedIn(false);
+    setDashboard(null);
+    alert(
+      language === "kk"
+        ? "Сессия аяқталды. Қайта кіріңіз."
+        : "Сессия истекла. Войдите заново.",
+    );
+  };
+
   const updatePlot = async () => {
     if (!editPlotData) return;
     setIsSubmitting(true);
@@ -212,6 +291,11 @@ export default function Home() {
           fillColor,
         }),
       });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
 
       if (res.ok) {
         setIsEditModalOpen(false);
@@ -244,6 +328,10 @@ export default function Home() {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       if (res.ok) {
         setIsEditModalOpen(false);
         mapRef.current?.refreshPlots();
@@ -282,6 +370,10 @@ export default function Home() {
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem("agro_token");
+      if (!token) {
+        handleUnauthorized();
+        return;
+      }
       const res = await fetch(apiUrl("/farm-plots"), {
         method: "POST",
         headers: {
@@ -296,9 +388,15 @@ export default function Home() {
           geometry: drawnGeometry,
           cropType: selectedCrop,
           fillColor,
-          seasonYear: 2024,
+          seasonYear: new Date().getFullYear(),
+          plantingDate: new Date().toISOString().slice(0, 10),
         }),
       });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
 
       const json = await res.json();
       if (json.success) {
@@ -410,7 +508,10 @@ export default function Home() {
   ];
 
   const regionName =
-    language === "kk" ? "Алматы облысы" : "Алматинская область";
+    dashboard?.profile.region ||
+    (language === "kk" ? "Алматы облысы" : "Алматинская область");
+  const districtName = dashboard?.profile.district || "Талгар";
+  const userName = dashboard?.profile.fullName || (language === "kk" ? "Фермер" : "Фермер");
   const weatherSummary =
     dashboard?.weather.summary?.trim() ||
     (language === "kk"
@@ -423,6 +524,124 @@ export default function Home() {
     hidden: language === "kk" ? "Жасырын" : "Скрыто",
     visible: language === "kk" ? "Көрінеді" : "Видно",
   } as const;
+  const cropDetailCopy =
+    language === "kk"
+      ? {
+          title: "Дақыл картасы",
+          growthCycle: "Өсу циклі",
+          planted: "Отырғызылған күні",
+          passed: "Өткен уақыт",
+          left: "Қалғаны",
+          harvest: "Жинау күні",
+          shelfLife: "Сақтау мерзімі",
+          storage: "Сақтау шарты",
+          advice: "Кеңестер",
+          risks: "Тәуекелдер",
+          lifehack: "Лайфхак",
+          mistake: "Жиі қате",
+          area: "Ауданы",
+          plots: "Алаңдар",
+          competition: "Бәсеке",
+          stage: "Кезең",
+          close: "Жабу",
+          sell: "Сату кеңесі",
+          noDate: "Отырғызу күні әлі жоқ",
+          planning: "Деректер толық болса, мерзім мен жинау дәлірек көрінеді.",
+        }
+      : {
+          title: "Карточка культуры",
+          growthCycle: "Цикл роста",
+          planted: "Дата посадки",
+          passed: "Прошло",
+          left: "Осталось",
+          harvest: "Дата сбора",
+          shelfLife: "Срок хранения",
+          storage: "Условия хранения",
+          advice: "Советы",
+          risks: "Риски",
+          lifehack: "Лайфхак",
+          mistake: "Типичная ошибка",
+          area: "Площадь",
+          plots: "Участки",
+          competition: "Конкуренция",
+          stage: "Стадия",
+          close: "Закрыть",
+          sell: "Совет по продаже",
+          noDate: "Дата посадки пока не указана",
+          planning: "Чем полнее данные по культуре, тем точнее срок и сбор.",
+        };
+  const selectedCropStage = selectedCropCard
+    ? selectedCropCard.daysPassed === 0
+      ? language === "kk"
+        ? "Жоспарлау"
+        : "Планирование"
+      : selectedCropCard.daysRemaining <= 14
+        ? language === "kk"
+          ? "Жинауға жақын"
+          : "Почти готово к сбору"
+        : selectedCropCard.daysPassed <= 30
+          ? language === "kk"
+            ? "Ерте өсу"
+            : "Ранний рост"
+          : language === "kk"
+            ? "Белсенді өсу"
+            : "Активный рост"
+    : null;
+  const selectedCropSellAdvice = selectedCropCard
+    ? selectedCropCard.competitionLevel === "high"
+      ? language === "kk"
+        ? "Нарық тығыз: көлемді бөліп шығарып, баға мен сапаны бақылау керек."
+        : "Рынок плотный: лучше продавать частями и внимательно следить за ценой."
+      : selectedCropCard.competitionLevel === "medium"
+        ? language === "kk"
+          ? "Сатуды бастауға болады, бірақ жақын нарық пен көрші ұсыныстарды бақылаңыз."
+          : "Можно готовить продажу, но стоит контролировать локальный спрос и соседние предложения."
+        : language === "kk"
+          ? "Бәсеке төмен: жергілікті сатылым мен жылдам логистикаға басымдық беріңіз."
+          : "Конкуренция низкая: ставка на локальную продажу и быструю логистику даст лучший результат."
+    : null;
+  const forecastCards = dashboard?.forecasts
+    ? [
+        {
+          label: language === "kk" ? "Өнім" : "Урожайность",
+          value:
+            dashboard.forecasts.yield.trend === "upside"
+              ? language === "kk"
+                ? "Өсу әлеуеті"
+                : "Потенциал роста"
+              : language === "kk"
+                ? "Тұрақты"
+                : "Стабильно",
+          summary: dashboard.forecasts.yield.summary,
+        },
+        {
+          label: language === "kk" ? "Баға" : "Цена",
+          value:
+            dashboard.forecasts.price.trend === "pressure"
+              ? language === "kk"
+                ? "Қысым бар"
+                : "Под давлением"
+              : language === "kk"
+                ? "Тұрақты"
+                : "Стабильнее",
+          summary: dashboard.forecasts.price.summary,
+        },
+        {
+          label: language === "kk" ? "Сұраныс" : "Спрос",
+          value: dashboard.cropAnalysis?.demandLevel || (language === "kk" ? "Орташа" : "Средний"),
+          summary: dashboard.forecasts.demand.summary,
+        },
+        {
+          label: language === "kk" ? "Жинау" : "Сбор",
+          value: dashboard.forecasts.harvest.daysRemaining
+            ? `${dashboard.forecasts.harvest.daysRemaining} ${language === "kk" ? "күн" : "дн"}`
+            : language === "kk"
+              ? "Есептелуде"
+              : "Расчет",
+          summary: dashboard.forecasts.harvest.summary,
+        },
+      ]
+    : [];
 
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-[#EAF3E7] font-sans">
@@ -467,20 +686,43 @@ export default function Home() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/50">
-                    {language === "kk" ? "Басты бет" : "Главная"}
+                    {language === "kk" ? "Фермер экожүйесі" : "Фермерская экосистема"}
                   </p>
                   <h1 className="mt-1 text-2xl font-black tracking-tight">
-                    {regionName}
+                    {language === "kk" ? `Сәлем, ${userName}` : `Здравствуйте, ${userName}`}
                   </h1>
                   <div className="mt-2 flex items-center gap-2 text-sm text-white/72">
                     <CloudSun className="size-4 text-[#D9B44A]" />
                     <span>{weatherSummary}</span>
                   </div>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-white/60">
+                    <MapPin className="size-3.5" />
+                    <span>{regionName}</span>
+                    <span>•</span>
+                    <span>{districtName}</span>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <div className="hidden items-center gap-1 rounded-full border border-white/12 bg-white/8 p-1 sm:flex">
+                    {(["ru", "kk"] as PlatformLanguage[]).map((lang) => (
+                      <button
+                        key={lang}
+                        type="button"
+                        onClick={() => setLanguage(lang)}
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${
+                          language === lang
+                            ? "bg-white text-[#17381C]"
+                            : "text-white/72 hover:bg-white/10"
+                        }`}
+                      >
+                        {lang}
+                      </button>
+                    ))}
+                  </div>
                   <div className="rounded-full border border-white/12 bg-white/8 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white/72">
-                    {language === "kk" ? "0 хабарлама" : "0 уведомлений"}
+                    {dashboard?.season.title ||
+                      (language === "kk" ? "Маусым" : "Сезон")}
                   </div>
                   <div className="flex size-11 items-center justify-center rounded-full border border-white/12 bg-white/10">
                     <User className="size-4 text-white/85" />
@@ -504,6 +746,23 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 sm:hidden">
+                {(["ru", "kk"] as PlatformLanguage[]).map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => setLanguage(lang)}
+                    className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${
+                      language === lang
+                        ? "border-white bg-white text-[#17381C]"
+                        : "border-white/16 bg-white/8 text-white/72"
+                    }`}
+                  >
+                    {lang}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
@@ -511,46 +770,70 @@ export default function Home() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
-                      {language === "kk" ? "AI болжам" : "AI прогноз"}
+                      {language === "kk" ? "Менің өнімім" : "Анализ моего урожая"}
                     </p>
                     <h2 className="mt-1 text-xl font-black text-[#18351D]">
-                      {dashboard?.insight.title ||
+                      {dashboard?.cropAnalysis?.cropType ||
                         (language === "kk"
                           ? "Әзірге дерек аз"
                           : "Пока мало данных")}
                     </h2>
                   </div>
                   <div className="rounded-full bg-[#F3EFE2] px-3 py-1.5 text-xs font-black text-[#7D692F]">
-                    {insightConfidence}%
+                    {dashboard?.cropAnalysis
+                      ? `${dashboard.cropAnalysis.daysUntilHarvest} ${language === "kk" ? "күн" : "дн"}`
+                      : `${insightConfidence}%`}
                   </div>
                 </div>
 
                 <p className="mt-3 text-sm leading-relaxed text-[#2F6B3D]/74">
-                  {dashboard?.insight.message ||
+                  {dashboard?.cropAnalysis?.recommendation ||
                     (language === "kk"
                       ? "Алаңдар қосылғаннан кейін мұнда бәсеке болжамы, ауа райы белгілері және әрекет ұсыныстары шығады."
                       : "После добавления полей здесь появятся прогноз по конкуренции, погодные сигналы и рекомендации по действиям.")}
                 </p>
 
-                <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-                  {(dashboard?.crops.length
-                    ? dashboard.crops
-                    : cropList.slice(0, 4).map((crop) => ({
-                        cropType: (cropLabels[language] as any)[crop.key],
-                        fillColor: null,
-                      }))
-                  ).map((crop: any) => (
-                    <div
-                      key={crop.cropType}
-                      className="flex min-w-fit items-center gap-2 rounded-full bg-[#F3F6EF] px-3 py-2 text-[#2F6B3D]"
-                    >
-                      <span
-                        className="size-2 rounded-full"
-                        style={{ backgroundColor: crop.fillColor || "#D9B44A" }}
-                      />
-                      <span className="text-xs font-bold">{crop.cropType}</span>
-                    </div>
-                  ))}
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#2F6B3D]/45">
+                      {language === "kk" ? "Саты" : "Стадия"}
+                    </p>
+                    <p className="mt-2 text-sm font-black text-[#18351D]">
+                      {dashboard?.cropAnalysis?.growthStage ||
+                        (language === "kk" ? "Жоспарлау" : "Планирование")}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#2F6B3D]/45">
+                      {language === "kk" ? "Сұраныс" : "Спрос"}
+                    </p>
+                    <p className="mt-2 text-sm font-black text-[#18351D]">
+                      {dashboard?.cropAnalysis?.demandLevel ||
+                        (language === "kk" ? "Орташа" : "Средний")}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#2F6B3D]/45">
+                      {language === "kk" ? "Бәсеке" : "Конкуренция"}
+                    </p>
+                    <p className="mt-2 text-sm font-black text-[#18351D]">
+                      {dashboard?.cropAnalysis?.competitionLevel
+                        ? localizedCompetition[dashboard.cropAnalysis.competitionLevel]
+                        : localizedCompetition.low}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#2F6B3D]/45">
+                      {language === "kk" ? "Түсім" : "Доход"}
+                    </p>
+                    <p className="mt-2 text-sm font-black text-[#18351D]">
+                      {dashboard?.cropAnalysis
+                        ? `${Math.round(
+                            dashboard.cropAnalysis.projectedIncomeKzt / 1000,
+                          )}k ₸`
+                        : "0 ₸"}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="mt-5 flex gap-2">
@@ -577,64 +860,193 @@ export default function Home() {
               <div className="grid gap-4">
                 <Card className="rounded-[2rem] border-[#DCE8D7] bg-white p-5 shadow-[0_20px_70px_rgba(17,45,22,0.08)]">
                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
-                    {language === "kk" ? "Жаңалықтар" : "Новости"}
+                    {language === "kk" ? "Маусым күйі" : "Статус сезона"}
                   </p>
-                  <div className="mt-3 space-y-3">
-                    <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
-                      <p className="text-sm font-black text-[#18351D]">
-                        {language === "kk" ? "Нарық шолуы" : "Сводка по рынку"}
-                      </p>
-                      <p className="mt-1 text-sm text-[#2F6B3D]/72">
-                        {language === "kk"
-                          ? "Баға, сұраныс және бәсекелестер белсенділігі жеке лентада көрсетіледі."
-                          : "Цены, спрос и активность конкурентов будут собраны в отдельную ленту."}
-                      </p>
-                    </div>
-                    <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
-                      <p className="text-sm font-black text-[#18351D]">
-                        {language === "kk" ? "Ауа райы тәуекелі" : "Погодные риски"}
-                      </p>
-                      <p className="mt-1 text-sm text-[#2F6B3D]/72">
-                        {language === "kk"
-                          ? "Мұнда жауын, жел және жұмыс уақыты бойынша ескертулер пайда болады."
-                          : "Здесь появятся предупреждения по осадкам, ветру и окнам для работ."}
-                      </p>
-                    </div>
+                  <div className="mt-3 rounded-[1.4rem] bg-[#17381C] px-4 py-4 text-white">
+                    <p className="text-sm font-black">
+                      {dashboard?.season.title ||
+                        (language === "kk" ? "Маусым" : "Сезон")}
+                    </p>
+                    <p className="mt-2 text-sm text-white/72">
+                      {dashboard?.season.summary ||
+                        (language === "kk"
+                          ? "Маусымдық деректер осы жерде шығады."
+                          : "Здесь появится сезонная сводка.")}
+                    </p>
                   </div>
                 </Card>
 
                 <Card className="rounded-[2rem] border-[#DCE8D7] bg-white p-5 shadow-[0_20px_70px_rgba(17,45,22,0.08)]">
                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
-                    {language === "kk" ? "Бүгінге" : "На сегодня"}
+                    {language === "kk" ? "Инфоорталық" : "Инфоцентр"}
                   </p>
                   <div className="mt-3 space-y-3">
-                    <div className="flex items-start justify-between rounded-[1.4rem] bg-[#17381C] px-4 py-4 text-white">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-white/55">
-                          {language === "kk" ? "Шаруашылық ахуалы" : "Пульс хозяйства"}
+                    {(dashboard?.infoCenter || []).map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3"
+                      >
+                        <p className="text-sm font-black text-[#18351D]">
+                          {item.title}
                         </p>
-                        <p className="mt-2 text-base font-black">
-                          {isDashboardLoading
-                            ? language === "kk"
-                              ? "Жүктелуде..."
-                              : "Загружаем..."
-                            : dashboard?.insight.title ||
-                              (language === "kk"
-                                ? "Алаң деректерін қосыңыз"
-                                : "Добавьте данные по полям")}
+                        <p className="mt-1 text-sm text-[#2F6B3D]/72">
+                          {item.summary}
                         </p>
                       </div>
-                    </div>
-                    <div className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3">
-                      <p className="text-sm font-black text-[#18351D]">
-                        {language === "kk" ? "Ауа райы" : "Погода"}
-                      </p>
-                      <p className="mt-1 text-sm text-[#2F6B3D]/72">{weatherSummary}</p>
-                    </div>
+                    ))}
                   </div>
                 </Card>
               </div>
             </div>
+
+            <Card className="rounded-[2rem] border-[#DCE8D7] bg-white p-5 shadow-[0_20px_70px_rgba(17,45,22,0.08)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
+                    {language === "kk" ? "Болжам" : "Прогноз"}
+                  </p>
+                  <h2 className="mt-1 text-xl font-black text-[#18351D]">
+                    {language === "kk" ? "Келесі қадамдар" : "Следующие ориентиры"}
+                  </h2>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {forecastCards.length > 0 ? (
+                  forecastCards.map((card) => (
+                    <div
+                      key={card.label}
+                      className="rounded-[1.5rem] bg-[#F5F8F1] px-4 py-4"
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/45">
+                        {card.label}
+                      </p>
+                      <p className="mt-2 text-base font-black text-[#18351D]">
+                        {card.value}
+                      </p>
+                      <p className="mt-2 text-sm text-[#2F6B3D]/72">
+                        {card.summary}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[1.5rem] bg-[#F5F8F1] px-4 py-4 text-sm text-[#2F6B3D]/72 md:col-span-2 xl:col-span-4">
+                    {language === "kk"
+                      ? "Болжам үшін кемінде бір дақыл мен егіс дерегі қажет."
+                      : "Для прогноза нужна хотя бы одна культура и данные по полю."}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            <Card className="rounded-[2rem] border-[#DCE8D7] bg-white p-5 shadow-[0_20px_70px_rgba(17,45,22,0.08)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
+                    {language === "kk" ? "Дақыл карталары" : "Карточки культур"}
+                  </p>
+                  <h2 className="mt-1 text-xl font-black text-[#18351D]">
+                    {language === "kk" ? "Өсу мен сақтау" : "Рост и хранение"}
+                  </h2>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                {(dashboard?.crops.length
+                  ? dashboard.crops
+                  : cropList.slice(0, 2).map((crop) => ({
+                      cropType: (cropLabels[language] as any)[crop.key],
+                      fillColor: "#D9B44A",
+                      growthDaysMin: 90,
+                      growthDaysMax: 120,
+                      shelfLifeDays: 30,
+                      plantingDate: null,
+                      daysRemaining: 0,
+                      harvestDateEstimate: null,
+                      tips: {
+                        watering:
+                          language === "kk"
+                            ? "Суару ұсыныстары кейін қосылады."
+                            : "Рекомендации по поливу появятся позже.",
+                        soil:
+                          language === "kk"
+                            ? "Топырақ ұсыныстары кейін қосылады."
+                            : "Рекомендации по почве появятся позже.",
+                        disease:
+                          language === "kk"
+                            ? "Тәуекелдер кейін қосылады."
+                            : "Риски появятся позже.",
+                        temperature:
+                          language === "kk"
+                            ? "Температура кеңестері кейін қосылады."
+                            : "Советы по температуре появятся позже.",
+                        lifehack:
+                          language === "kk"
+                            ? "Лайфхактар кейін қосылады."
+                            : "Лайфхаки появятся позже.",
+                        commonMistake:
+                          language === "kk"
+                            ? "Қателіктер кейін қосылады."
+                            : "Типичные ошибки появятся позже.",
+                      },
+                    }))
+                ).map((crop: any) => (
+                  <div
+                    key={crop.cropType}
+                    className="cursor-pointer rounded-[1.6rem] bg-[#F5F8F1] px-4 py-4 transition-all hover:bg-[#EEF4E8] active:scale-[0.99]"
+                    onClick={() => setSelectedCropCard(crop)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="size-3 rounded-full"
+                            style={{ backgroundColor: crop.fillColor || "#D9B44A" }}
+                          />
+                          <h3 className="text-lg font-black text-[#18351D]">
+                            {crop.cropType}
+                          </h3>
+                        </div>
+                        <p className="mt-2 text-sm text-[#2F6B3D]/72">
+                          {crop.growthDaysMin} - {crop.growthDaysMax} {language === "kk" ? "күн" : "дней"} • {language === "kk" ? "сақтау" : "хранение"} {crop.shelfLifeDays} {language === "kk" ? "күн" : "дней"}
+                        </p>
+                      </div>
+                      <div className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-[#7D692F]">
+                        {crop.daysRemaining
+                          ? `${crop.daysRemaining} ${language === "kk" ? "күн қалды" : "дней до сбора"}`
+                          : language === "kk"
+                            ? "Өсу циклі"
+                            : "Цикл роста"}
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-2">
+                      <p className="text-sm text-[#2F6B3D]/72">
+                        <span className="font-black text-[#18351D]">
+                          {language === "kk" ? "Суару:" : "Полив:"}
+                        </span>{" "}
+                        {crop.tips.watering}
+                      </p>
+                      <p className="text-sm text-[#2F6B3D]/72">
+                        <span className="font-black text-[#18351D]">
+                          {language === "kk" ? "Топырақ:" : "Почва:"}
+                        </span>{" "}
+                        {crop.tips.soil}
+                      </p>
+                      <p className="text-sm text-[#2F6B3D]/72">
+                        <span className="font-black text-[#18351D]">
+                          {language === "kk" ? "Тәуекел:" : "Риск:"}
+                        </span>{" "}
+                        {crop.tips.disease}
+                      </p>
+                      <p className="text-sm text-[#2F6B3D]/72">
+                        <span className="font-black text-[#18351D]">
+                          {language === "kk" ? "Лайфхак:" : "Лайфхак:"}
+                        </span>{" "}
+                        {crop.tips.lifehack}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
           </div>
         </div>
       )}
@@ -643,17 +1055,182 @@ export default function Home() {
       {activeTab === "profile" && <ProfileView {...({ language } as any)} />}
       {activeTab === "admin" && <AdminView />}
 
+      {selectedCropCard && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm sm:items-center">
+          <div
+            className="absolute inset-0"
+            onClick={() => setSelectedCropCard(null)}
+          />
+          <div className="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-[2rem] bg-[#F4EFE6] shadow-[0_30px_100px_rgba(13,30,17,0.3)]">
+            <div className="flex items-start justify-between gap-4 border-b border-white/45 bg-white/60 px-5 py-5 backdrop-blur-xl">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#2F6B3D]/45">
+                  {cropDetailCopy.title}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className="size-3 rounded-full"
+                    style={{ backgroundColor: selectedCropCard.fillColor || "#D9B44A" }}
+                  />
+                  <h2 className="truncate text-2xl font-black text-[#17381C]">
+                    {selectedCropCard.cropType}
+                  </h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCropCard(null)}
+                className="flex size-11 items-center justify-center rounded-full bg-white text-[#17381C] shadow-sm transition-colors hover:bg-[#efe7d6]"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-5">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-[1.6rem] bg-[#17381C] px-4 py-4 text-white">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/55">
+                    {cropDetailCopy.growthCycle}
+                  </p>
+                  <p className="mt-2 text-lg font-black">
+                    {selectedCropCard.growthDaysMin} - {selectedCropCard.growthDaysMax} {language === "kk" ? "күн" : "дней"}
+                  </p>
+                  <p className="mt-2 text-sm text-white/72">
+                    {selectedCropStage || cropDetailCopy.planning}
+                  </p>
+                </div>
+                <div className="rounded-[1.6rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.sell}
+                  </p>
+                  <p className="mt-2 text-sm font-medium leading-relaxed text-[#2F6B3D]/78">
+                    {selectedCropSellAdvice}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-[1.4rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.area}
+                  </p>
+                  <p className="mt-2 text-base font-black text-[#17381C]">
+                    {selectedCropCard.areaHectares} га
+                  </p>
+                </div>
+                <div className="rounded-[1.4rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.plots}
+                  </p>
+                  <p className="mt-2 text-base font-black text-[#17381C]">
+                    {selectedCropCard.plotsCount}
+                  </p>
+                </div>
+                <div className="rounded-[1.4rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.passed}
+                  </p>
+                  <p className="mt-2 text-base font-black text-[#17381C]">
+                    {selectedCropCard.daysPassed} {language === "kk" ? "күн" : "дн"}
+                  </p>
+                </div>
+                <div className="rounded-[1.4rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.left}
+                  </p>
+                  <p className="mt-2 text-base font-black text-[#17381C]">
+                    {selectedCropCard.daysRemaining} {language === "kk" ? "күн" : "дн"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-[1.6rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.planted}
+                  </p>
+                  <p className="mt-2 text-sm font-black text-[#17381C]">
+                    {selectedCropCard.plantingDate || cropDetailCopy.noDate}
+                  </p>
+                  <p className="mt-3 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.harvest}
+                  </p>
+                  <p className="mt-2 text-sm font-black text-[#17381C]">
+                    {selectedCropCard.harvestDateEstimate || cropDetailCopy.planning}
+                  </p>
+                </div>
+                <div className="rounded-[1.6rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.competition}
+                  </p>
+                  <p className="mt-2 text-sm font-black text-[#17381C]">
+                    {localizedCompetition[selectedCropCard.competitionLevel]}
+                  </p>
+                  <p className="mt-3 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.shelfLife}
+                  </p>
+                  <p className="mt-2 text-sm font-black text-[#17381C]">
+                    {selectedCropCard.shelfLifeDays} {language === "kk" ? "күн" : "дней"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[1.6rem] bg-white px-4 py-4 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {cropDetailCopy.storage}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-[#2F6B3D]/78">
+                  {selectedCropCard.storage}
+                </p>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-[1.6rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.advice}
+                  </p>
+                  <div className="mt-3 grid gap-2 text-sm text-[#2F6B3D]/78">
+                    <p><span className="font-black text-[#17381C]">{language === "kk" ? "Суару:" : "Полив:"}</span> {selectedCropCard.tips.watering}</p>
+                    <p><span className="font-black text-[#17381C]">{language === "kk" ? "Топырақ:" : "Почва:"}</span> {selectedCropCard.tips.soil}</p>
+                    <p><span className="font-black text-[#17381C]">{language === "kk" ? "Температура:" : "Температура:"}</span> {selectedCropCard.tips.temperature}</p>
+                  </div>
+                </div>
+                <div className="rounded-[1.6rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {cropDetailCopy.risks}
+                  </p>
+                  <div className="mt-3 grid gap-3 text-sm text-[#2F6B3D]/78">
+                    <p><span className="font-black text-[#17381C]">{language === "kk" ? "Тәуекел:" : "Риск:"}</span> {selectedCropCard.tips.disease}</p>
+                    <p><span className="font-black text-[#17381C]">{cropDetailCopy.lifehack}:</span> {selectedCropCard.tips.lifehack}</p>
+                    <p><span className="font-black text-[#17381C]">{cropDetailCopy.mistake}:</span> {selectedCropCard.tips.commonMistake}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-white/45 bg-white/60 px-5 py-4 backdrop-blur-xl">
+              <Button
+                onClick={() => setSelectedCropCard(null)}
+                className="h-12 w-full rounded-[1rem] bg-[#2F6B3D] text-sm font-black text-white hover:bg-[#285b34]"
+              >
+                {cropDetailCopy.close}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === "map" && (
         <div className="pointer-events-none absolute inset-0 z-20">
           <div className="absolute inset-x-0 top-0 px-4 pt-4 lg:px-6">
-            <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
-              <div className="pointer-events-auto max-w-md rounded-[1.5rem] border border-white/18 bg-[#16321C]/52 px-3 py-3 text-white shadow-[0_20px_60px_rgba(7,19,10,0.2)] backdrop-blur-xl">
+            <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+              <div className="pointer-events-auto max-w-[20rem] rounded-[1.45rem] border border-white/18 bg-[#16321C]/52 px-3 py-3 text-white shadow-[0_20px_60px_rgba(7,19,10,0.2)] backdrop-blur-xl md:max-w-md">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/55">
                       Регион
                     </p>
-                    <h1 className="mt-1 truncate text-base font-black tracking-tight lg:text-lg">
+                    <h1 className="mt-1 truncate text-[0.95rem] font-black tracking-tight lg:text-lg">
                       {regionName}
                     </h1>
                     <div className="mt-2 flex items-center gap-2 text-xs text-white/72">
@@ -670,13 +1247,13 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="pointer-events-auto flex gap-2 overflow-x-auto pb-1 md:hidden">
+              <div className="pointer-events-auto flex gap-1.5 overflow-x-auto pb-1 md:hidden">
                 {(["ru", "kk"] as PlatformLanguage[]).map((lang) => (
                   <button
                     key={lang}
                     type="button"
                     onClick={() => setLanguage(lang)}
-                    className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${
+                    className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${
                       language === lang
                         ? "border-white bg-white text-[#1F4D2C]"
                         : "border-white/16 bg-[#16321C]/45 text-white/75"

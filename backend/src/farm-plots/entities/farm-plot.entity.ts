@@ -52,6 +52,9 @@ export class FarmPlot {
   @Column()
   seasonYear: number;
 
+  @Column({ type: 'date', nullable: true })
+  plantingDate?: Date | null;
+
   @Column({ type: 'enum', enum: PlantingStatus, default: PlantingStatus.PLANNED })
   plantingStatus: PlantingStatus;
 
