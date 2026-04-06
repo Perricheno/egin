@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { area as turfArea } from "@turf/turf";
 import {
+  BriefcaseBusiness,
   CircleGauge,
   CloudSun,
   Eraser,
@@ -15,6 +16,7 @@ import {
   MapPin,
   MousePointer2,
   Navigation2,
+  Newspaper,
   Plus,
   ReceiptText,
   Ruler,
@@ -36,10 +38,12 @@ import MarketView from "@/components/ui/market-view";
 import ProfileView from "@/components/ui/profile-view";
 import AdminView from "@/components/ui/admin-view";
 import AuthView from "@/components/ui/auth-view";
+import InfoCenterView from "@/components/ui/info-center-view";
+import ServicesView from "@/components/ui/services-view";
 import { cropLabels, cropList, PlatformLanguage, ui } from "@/lib/i18n";
 import { apiUrl } from "@/lib/api";
 
-type ActiveTab = "home" | "map" | "market" | "profile" | "admin";
+type ActiveTab = "home" | "map" | "market" | "profile" | "admin" | "info" | "services";
 
 type DashboardResponse = {
   profile: {
@@ -138,9 +142,15 @@ type DashboardResponse = {
   } | null;
   infoCenter: Array<{
     id: string;
+    category: string;
+    categoryLabel: string;
     title: string;
     summary: string;
     status: string;
+    imageUrl?: string | null;
+    actionLabel?: string | null;
+    actionUrl?: string | null;
+    publishedAt?: string;
   }>;
 };
 
@@ -662,6 +672,17 @@ export default function Home() {
       ]
     : [];
   const weatherPreview = dashboard?.weather?.forecast?.slice(0, 3) || [];
+  const featuredNews =
+    dashboard?.infoCenter?.find((item) => item.category === "news") || null;
+  const utilityInfoCards =
+    dashboard?.infoCenter?.filter((item) => item.category !== "news").slice(0, 4) || [];
+  const openExternal = (url?: string | null) => {
+    if (!url || typeof window === "undefined") {
+      return;
+    }
+
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-[#EAF3E7] font-sans">
@@ -926,25 +947,96 @@ export default function Home() {
                   </div>
                 </Card>
 
-                <Card className="rounded-[2rem] border-[#DCE8D7] bg-white p-5 shadow-[0_20px_70px_rgba(17,45,22,0.08)]">
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
-                    {language === "kk" ? "Инфоорталық" : "Инфоцентр"}
-                  </p>
-                  <div className="mt-3 space-y-3">
-                    {(dashboard?.infoCenter || []).map((item) => (
-                      <div
-                        key={item.id}
-                        className="rounded-[1.4rem] bg-[#F5F8F1] px-4 py-3"
-                      >
-                        <p className="text-sm font-black text-[#18351D]">
-                          {item.title}
-                        </p>
-                        <p className="mt-1 text-sm text-[#2F6B3D]/72">
-                          {item.summary}
-                        </p>
-                      </div>
-                    ))}
+                <Card className="overflow-hidden rounded-[2rem] border-[#DCE8D7] bg-white p-0 shadow-[0_20px_70px_rgba(17,45,22,0.08)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="px-5 pt-5">
+                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/40">
+                        {language === "kk" ? "Жаңалықтар" : "Новости"}
+                      </p>
+                      <h2 className="mt-1 text-lg font-black text-[#18351D]">
+                        {language === "kk" ? "Фермерге қызық" : "Что важно фермеру"}
+                      </h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("info")}
+                      className="mr-5 mt-5 rounded-full bg-[#17381C] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white"
+                    >
+                      {language === "kk" ? "Ашу" : "Открыть"}
+                    </button>
                   </div>
+                  {featuredNews ? (
+                    <div className="mt-4">
+                      <div
+                        className="mx-5 overflow-hidden rounded-[1.6rem] bg-[#17381C]"
+                        style={{
+                          backgroundImage: featuredNews.imageUrl
+                            ? `linear-gradient(180deg, rgba(14,31,18,0.06) 0%, rgba(14,31,18,0.78) 100%), url(${featuredNews.imageUrl})`
+                            : "linear-gradient(135deg, #17381C 0%, #2F6B3D 55%, #7DA65A 100%)",
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                        }}
+                      >
+                        <div className="flex min-h-[14rem] flex-col justify-end px-4 py-4 text-white">
+                          <div className="mb-2 inline-flex w-fit items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/88 backdrop-blur-md">
+                            <Newspaper className="size-3.5" />
+                            {language === "kk" ? "Агро жаңалық" : "Агро новость"}
+                          </div>
+                          <h3 className="max-w-sm text-xl font-black leading-tight">
+                            {featuredNews.title}
+                          </h3>
+                          <p className="mt-2 max-w-sm text-sm leading-relaxed text-white/78">
+                            {featuredNews.summary}
+                          </p>
+                          {featuredNews.publishedAt ? (
+                            <p className="mt-3 text-[11px] text-white/62">
+                              {new Date(featuredNews.publishedAt).toLocaleDateString(
+                                language === "kk" ? "kk-KZ" : "ru-RU",
+                              )}
+                            </p>
+                          ) : null}
+                          <div className="mt-4">
+                            <button
+                              type="button"
+                              onClick={() => openExternal(featuredNews.actionUrl)}
+                              className="rounded-full bg-white px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#17381C]"
+                            >
+                              {language === "kk" ? "Дереккөзге өту" : "Перейти к источнику"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 px-5 py-5">
+                        {utilityInfoCards.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-[1.35rem] bg-[#F5F8F1] px-4 py-3"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#2F6B3D]/40">
+                                {item.categoryLabel}
+                              </p>
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7D692F]">
+                                {item.status}
+                              </p>
+                            </div>
+                            <p className="mt-1 text-sm font-black text-[#18351D]">
+                              {item.title}
+                            </p>
+                            <p className="mt-1 text-sm text-[#2F6B3D]/72">
+                              {item.summary}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="px-5 py-5 text-sm text-[#2F6B3D]/72">
+                      {language === "kk"
+                        ? "Жаңалықтар блогы жақында толығады."
+                        : "Новостной блок скоро будет заполнен."}
+                    </div>
+                  )}
                 </Card>
               </div>
             </div>
@@ -1102,6 +1194,13 @@ export default function Home() {
       )}
 
       {activeTab === "market" && <MarketView {...({ language } as any)} />}
+      {activeTab === "services" && <ServicesView language={language} />}
+      {activeTab === "info" && (
+        <InfoCenterView
+          language={language}
+          onBack={() => setActiveTab("home")}
+        />
+      )}
       {activeTab === "profile" && <ProfileView {...({ language } as any)} />}
       {activeTab === "admin" && <AdminView />}
 
@@ -1621,6 +1720,11 @@ export default function Home() {
             },
             { key: "map" as const, icon: MapIcon, label: t.map || "Карта" },
             { key: "market" as const, icon: ShoppingBasket, label: t.market || "Маркет" },
+            {
+              key: "services" as const,
+              icon: BriefcaseBusiness,
+              label: language === "kk" ? "Қызметтер" : "Услуги",
+            },
             {
               key: "admin" as const,
               icon: Shield,

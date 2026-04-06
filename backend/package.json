@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "clean": "node -e \"const fs=require('fs'); const path='dist'; if(fs.existsSync(path)){ const renamed='.dist-clean-' + Date.now(); fs.renameSync(path, renamed); fs.rm(renamed,{recursive:true,force:true},()=>{}); }\"",
+    "clean": "node -e \"const fs=require('fs'); const entries=fs.readdirSync('.').filter((name)=>name==='dist'||name.startsWith('dist ')||name.startsWith('.dist-clean-')); for(const name of entries){ if(fs.existsSync(name)){ const renamed=name.startsWith('.dist-clean-')?name:'.dist-clean-'+Date.now()+'-'+name.replace(/\\s+/g,'-'); try{ fs.renameSync(name, renamed); fs.rmSync(renamed,{recursive:true,force:true}); }catch{ fs.rmSync(name,{recursive:true,force:true}); } } }\"",
     "prebuild": "npm run clean",
     "prestart:dev": "npm run clean",
     "build": "nest build",

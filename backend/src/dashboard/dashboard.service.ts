@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FarmPlot } from '../farm-plots/entities/farm-plot.entity';
+import { InfoCenterService } from '../info-center/info-center.service';
 import {
   ListingStatus,
   MarketplaceListing,
@@ -130,6 +131,7 @@ export class DashboardService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly weatherService: WeatherService,
+    private readonly infoCenterService: InfoCenterService,
   ) {}
 
   private getCropProfile(cropName: string | null) {
@@ -527,29 +529,7 @@ export class DashboardService {
         }
       : null;
 
-    const infoCenter = [
-      {
-        id: 'subsidies',
-        title: 'Субсидии',
-        summary:
-          'Подключим региональные программы, дедлайны и список документов по области пользователя.',
-        status: 'planned',
-      },
-      {
-        id: 'news',
-        title: 'Новости рынка',
-        summary:
-          'Сюда войдут короткие региональные новости, цены и сезонные предупреждения.',
-        status: 'planned',
-      },
-      {
-        id: 'trade',
-        title: 'Экспорт / Импорт',
-        summary:
-          'Блок для логистики, ограничений, цен и требований по внешним рынкам.',
-        status: 'planned',
-      },
-    ];
+    const infoCenter = await this.infoCenterService.getHomeCards(user?.region ?? null);
 
     return {
       profile: {

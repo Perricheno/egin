@@ -22,6 +22,10 @@ import { MarketplaceListing } from './marketplace/entities/marketplace-listing.e
 import { Order, OrderItem } from './orders/entities/order.entity';
 import { Chat, ChatMessage, ChatParticipant } from './chat/entities/chat.entity';
 import { ChatModule } from './chat/chat.module';
+import { InfoCenterItem } from './info-center/entities/info-center-item.entity';
+import { InfoCenterModule } from './info-center/info-center.module';
+import { ServiceListing } from './services/entities/service-listing.entity';
+import { ServicesModule } from './services/services.module';
 
 @Module({
   imports: [
@@ -45,6 +49,8 @@ import { ChatModule } from './chat/chat.module';
         Chat,
         ChatParticipant,
         ChatMessage,
+        InfoCenterItem,
+        ServiceListing,
       ],
       synchronize: true, // Use migration in actual strict production.
     }),
@@ -58,6 +64,8 @@ import { ChatModule } from './chat/chat.module';
     DashboardModule,
     WeatherModule,
     ChatModule,
+    InfoCenterModule,
+    ServicesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
