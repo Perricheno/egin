@@ -41,6 +41,21 @@ export class Chat {
   @Column({ nullable: true })
   district?: string;
 
+  @Column({ nullable: true })
+  village?: string;
+
+  @Column({ nullable: true })
+  cropType?: string;
+
+  @Column({ nullable: true, unique: true })
+  channelKey?: string;
+
+  @Column({ nullable: true })
+  channelLabel?: string;
+
+  @Column({ default: false })
+  isModerated: boolean;
+
   @OneToMany(() => ChatParticipant, (participant) => participant.chat, {
     cascade: true,
   })

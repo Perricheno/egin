@@ -28,6 +28,13 @@ export class ChatController {
     return { success: true, data };
   }
 
+  @Get('channels')
+  @ApiOperation({ summary: 'List and auto-join community channels for the current user.' })
+  async listChannels(@Req() req: { user: { id: string } }) {
+    const data = await this.chatService.listCommunityChannels(req.user.id);
+    return { success: true, data };
+  }
+
   @Get(':id/messages')
   @ApiOperation({ summary: 'Get a chat with ordered messages.' })
   async getMessages(

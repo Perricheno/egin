@@ -15,45 +15,19 @@ import { OrdersModule } from './orders/orders.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { WeatherModule } from './weather/weather.module';
 
-import { User } from './users/entities/user.entity';
-import { FarmPlot } from './farm-plots/entities/farm-plot.entity';
-import { Crop } from './crops/entities/crop.entity';
-import { MarketplaceListing } from './marketplace/entities/marketplace-listing.entity';
-import { Order, OrderItem } from './orders/entities/order.entity';
-import { Chat, ChatMessage, ChatParticipant } from './chat/entities/chat.entity';
 import { ChatModule } from './chat/chat.module';
-import { InfoCenterItem } from './info-center/entities/info-center-item.entity';
 import { InfoCenterModule } from './info-center/info-center.module';
-import { ServiceListing } from './services/entities/service-listing.entity';
 import { ServicesModule } from './services/services.module';
+import { buildDatabaseOptions } from './database/database.config';
+import { DemoDataModule } from './demo/demo-data.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true, // makes env variables accessible everywhere
+      isGlobal: true,
+      envFilePath: ['.env', '.env.example'],
     }),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      username: process.env.DB_USERNAME || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-      database: process.env.DB_NAME || 'agro_platform_db',
-      entities: [
-        User,
-        FarmPlot,
-        Crop,
-        MarketplaceListing,
-        Order,
-        OrderItem,
-        Chat,
-        ChatParticipant,
-        ChatMessage,
-        InfoCenterItem,
-        ServiceListing,
-      ],
-      synchronize: true, // Use migration in actual strict production.
-    }),
+    TypeOrmModule.forRoot(buildDatabaseOptions()),
     UsersModule,
     AuthModule,
     FarmPlotsModule,
@@ -66,6 +40,7 @@ import { ServicesModule } from './services/services.module';
     ChatModule,
     InfoCenterModule,
     ServicesModule,
+    DemoDataModule,
   ],
   controllers: [AppController],
   providers: [AppService],

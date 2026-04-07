@@ -240,6 +240,43 @@ export class DashboardService {
     return `Сегодня: ${temp}, осадки: ${precipitation}, ${today.summary.toLowerCase()}.`;
   }
 
+  private resolveWeatherTarget(plots: FarmPlot[], user: User | null) {
+    const plotsByArea = [...plots].sort(
+      (left, right) =>
+        Number(right.areaSizeHectares || 0) - Number(left.areaSizeHectares || 0),
+    );
+
+    for (const plot of plotsByArea) {
+      const coords = this.weatherService.getPlotCoordinates(plot.geometry);
+
+      if (coords) {
+        return {
+          source: 'plot' as const,
+          coords,
+          plotId: plot.id,
+          plotTitle: plot.title ?? null,
+        };
+      }
+    }
+
+    const regionCoords = this.weatherService.getRegionCoordinates(user?.region);
+    if (regionCoords) {
+      return {
+        source: 'region' as const,
+        coords: regionCoords,
+        plotId: null,
+        plotTitle: null,
+      };
+    }
+
+    return {
+      source: 'unavailable' as const,
+      coords: null,
+      plotId: null,
+      plotTitle: null,
+    };
+  }
+
   async getHomeDashboard(userId: string) {
     const [user, plots, activeListings] = await Promise.all([
       this.userRepository.findOne({
@@ -371,9 +408,18 @@ export class DashboardService {
     );
     const currentMonth = new Date().getMonth() + 1;
     const season = this.getSeasonStatus(currentMonth);
-    const weatherCoords = this.weatherService.getRegionCoordinates(user?.region);
+    const weatherTarget = this.resolveWeatherTarget(plots, user);
     let weatherBlock: {
       status: string;
+      source: 'plot' | 'region' | 'unavailable';
+      plotId: string | null;
+      plotTitle: string | null;
+      location: {
+        lat: number | null;
+        lng: number | null;
+        region: string | null;
+        district: string | null;
+      };
       summary: string;
       today: {
         temperature: number | null;
@@ -396,18 +442,27 @@ export class DashboardService {
         message: string;
       }>;
     } = {
-      status: 'pending_provider',
+      status: 'missing_coordinates',
+      source: weatherTarget.source,
+      plotId: weatherTarget.plotId,
+      plotTitle: weatherTarget.plotTitle,
+      location: {
+        lat: weatherTarget.coords?.lat ?? null,
+        lng: weatherTarget.coords?.lng ?? null,
+        region: user?.region ?? null,
+        district: user?.district ?? null,
+      },
       summary:
-        'Погодный провайдер еще не подключен. На следующем этапе сюда добавим текущую погоду, 3/7-дневный прогноз и агро-предупреждения.',
+        'Добавьте геометрию поля или регион, чтобы получать персонализированный прогноз и агро-предупреждения.',
       today: null,
       forecast: [],
     };
 
-    if (weatherCoords) {
+    if (weatherTarget.coords) {
       try {
         const forecastResult = await this.weatherService.getForecast(
-          weatherCoords.lat,
-          weatherCoords.lng,
+          weatherTarget.coords.lat,
+          weatherTarget.coords.lng,
           7,
         );
         const forecastItems = forecastResult.forecast ?? [];
@@ -415,6 +470,15 @@ export class DashboardService {
 
         weatherBlock = {
           status: 'live',
+          source: weatherTarget.source,
+          plotId: weatherTarget.plotId,
+          plotTitle: weatherTarget.plotTitle,
+          location: {
+            lat: weatherTarget.coords.lat,
+            lng: weatherTarget.coords.lng,
+            region: user?.region ?? null,
+            district: user?.district ?? null,
+          },
           summary: this.formatWeatherSummary(
             firstDay
               ? {
@@ -445,6 +509,15 @@ export class DashboardService {
       } catch {
         weatherBlock = {
           status: 'provider_error',
+          source: weatherTarget.source,
+          plotId: weatherTarget.plotId,
+          plotTitle: weatherTarget.plotTitle,
+          location: {
+            lat: weatherTarget.coords.lat,
+            lng: weatherTarget.coords.lng,
+            region: user?.region ?? null,
+            district: user?.district ?? null,
+          },
           summary:
             'Не удалось получить погоду от внешнего провайдера. Проверьте доступ к сети и настройки weather API.',
           today: null,

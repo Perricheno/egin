@@ -60,6 +60,30 @@ export class MarketplaceListing {
   @Column()
   location: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  imageUrl?: string | null;
+
+  @Column({ default: false })
+  deliveryAvailable: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  deliveryNotes?: string | null;
+
+  @Column({ type: 'integer', nullable: true })
+  freshnessDays?: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  storageLifeDays?: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  storageConditions?: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  recommendedRegion?: string | null;
+
+  @Column({ type: 'varchar', default: 'lead_chat' })
+  saleModel: string;
+
   @Column({ type: 'enum', enum: ListingStatus, default: ListingStatus.ACTIVE })
   status: ListingStatus;
 

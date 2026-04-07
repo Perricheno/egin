@@ -32,36 +32,68 @@ export class FarmPlotsController {
   }
 
   @Get()
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Retrieve all farm plots as GeoJSON entities.' })
-  async findAll() {
-    const data = await this.farmPlotsService.findAll();
+  async findAll(@Req() req: { user: { id: string; role: any } }) {
+    const data = await this.farmPlotsService.findAll(req.user.id, req.user.role);
+    return { success: true, data };
+  }
+
+  @Get('mine')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Retrieve only the current user farm plots.' })
+  async findMine(@Req() req: { user: { id: string } }) {
+    const data = await this.farmPlotsService.findMine(req.user.id);
     return { success: true, data };
   }
 
   @Patch(':id')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update a farm plot by id.' })
-  async update(@Param('id') id: string, @Body() updateData: any) {
-    const data = await this.farmPlotsService.update(id, updateData);
+  async update(
+    @Req() req: { user: { id: string; role: any } },
+    @Param('id') id: string,
+    @Body() updateData: any,
+  ) {
+    const data = await this.farmPlotsService.update(
+      id,
+      req.user.id,
+      req.user.role,
+      updateData,
+    );
     return { success: true, data };
   }
 
   @Get(':id/competition')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Calculate competition score for a farm plot and decide marketplace visibility.' })
   async getCompetition(
+    @Req() req: { user: { id: string; role: any } },
     @Param('id') id: string,
     @Query('radiusKm') radiusKm?: string,
   ) {
     const data = await this.farmPlotsService.getCompetitionByPlotId(
       id,
+      req.user.id,
+      req.user.role,
       radiusKm ? Number(radiusKm) : 5,
     );
     return { success: true, data };
   }
 
   @Delete(':id')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Delete a farm plot by id.' })
-  async remove(@Param('id') id: string) {
-    await this.farmPlotsService.remove(id);
+  async remove(
+    @Req() req: { user: { id: string; role: any } },
+    @Param('id') id: string,
+  ) {
+    await this.farmPlotsService.remove(id, req.user.id, req.user.role);
     return { success: true };
   }
 }

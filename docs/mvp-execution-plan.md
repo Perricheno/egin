@@ -1,115 +1,126 @@
-# MVP Execution Plan
+# Launch Execution Plan
 
-## Stage 1: Foundation Cleanup
+## Цель
 
-Goal:
+Перевести текущий проект из состояния "богатый MVP" в состояние "контролируемый запуск для Казахстана".
 
-- make the current repository safe for MVP development
+## Главный приоритет
 
-Tasks:
+Не добавлять хаотично новые фичи. Сначала закрыть foundation, затем продуктовые пробелы, затем release hardening.
 
-- add shared frontend API config
-- move API host to env
-- stop adding new hardcoded URLs
-- preserve existing user-modified files
-- lock MVP scope in docs
+## Порядок работ
 
-Definition of done:
+### Stage 1. Foundation Hardening
 
-- frontend has shared API helper
-- env examples exist for frontend and backend
-- product blueprint exists in repo
+Цель:
 
-## Stage 2: Backend Domain Alignment
+- убрать технические блокеры запуска
 
-Goal:
+Задачи:
 
-- align current NestJS modules to AGRO APP MVP
-
-Tasks:
-
-- add `dashboard` module
-- add `weather` module
-- add `competition` module
-- add `chat` module
-- extend `farm_plots` with `cropId`, competition, predicted income fields
-- extend `marketplace_listings` with visibility status
+- убрать зависимость от `synchronize: true`
+- ввести миграции
+- добавить health-checks
+- зафиксировать env-переменные запуска
+- обновить roadmap, checklist и ownership docs
 
 Definition of done:
 
-- API supports dashboard, competition, weather, and direct chat
+- backend стартует в migration-first режиме
+- есть endpoint для health probes
+- launch docs живут в репозитории и соответствуют фактическому scope
 
-## Stage 3: Frontend Mobile-First Reshape
+### Stage 2. Data Integrity и Real Data
 
-Goal:
+Цель:
 
-- turn the current web UI into a mobile-first shell ready for Capacitor
+- убрать продуктовые заглушки из критичных модулей
 
-Tasks:
+Задачи:
 
-- simplify navigation to 4 tabs: home, map, market, profile
-- move heavy desktop-only controls behind sheets or secondary actions
-- add home dashboard cards
-- keep map as primary action surface
-- standardize crop colors
-
-Definition of done:
-
-- all key flows work on a narrow phone viewport first
-
-## Stage 4: AI v1
-
-Goal:
-
-- ship explainable intelligence without fake precision
-
-Tasks:
-
-- competition score from PostGIS plus rule-based weights
-- projected income estimate
-- dashboard insight summary
-- confidence score on all predictions
+- dashboard не использует placeholder состояния как основной сценарий
+- услуги перестают сидироваться на чтении как launch-данные
+- маркетплейс получает реальные поля по freshness, delivery, storage и media
+- погода получает режим работы по координатам поля
 
 Definition of done:
 
-- user sees useful recommendation with explanation and confidence
+- ключевые пользовательские карточки и списки не выглядят демо-данными
 
-## Stage 5: Marketplace and Chat Hardening
+### Stage 3. Product Completion по ядру
 
-Goal:
+Цель:
 
-- support real farmer transactions inside the app
+- закрыть функциональные пробелы v1
 
-Tasks:
+Задачи:
 
-- direct chat creation from listing
-- marketplace visibility rule from competition level
-- listing cards with location, quantity, expiration
-- deal-context chat messages
-
-Definition of done:
-
-- seller can publish, buyer can open chat, and app enforces visibility logic
-
-## Stage 6: Capacitor and Xcode
-
-Goal:
-
-- wrap the stable MVP for iOS testing
-
-Tasks:
-
-- add Capacitor to frontend
-- add iOS platform
-- run in Xcode simulator
-- validate auth persistence, map, network, and geolocation
+- вынести карточку культуры в отдельный модуль
+- добавить provider profiles и CRUD по услугам
+- расширить чат до региональных каналов на REST + polling
+- внедрить отзывы и trust layer
+- расширить инфоцентр до детальных страниц
 
 Definition of done:
 
-- working iOS simulator build
+- основные сценарии фермера замыкаются внутри платформы без ручных обходов
+
+### Stage 4. Frontend Restructure
+
+Цель:
+
+- убрать монолитный frontend entrypoint
+
+Задачи:
+
+- разделить frontend на модули: `dashboard`, `market`, `services`, `chat`, `info-center`
+- вынести shared API/error/loading patterns
+- стабилизировать mobile web UX
+
+Definition of done:
+
+- `frontend/src/app/page.tsx` не является единственной точкой концентрации бизнес-логики
+
+### Stage 5. Release Hardening
+
+Цель:
+
+- подготовить controlled launch
+
+Задачи:
+
+- роли и права
+- API error handling
+- логирование и мониторинг
+- smoke tests по релизным сценариям
+- Capacitor regression pass
+
+Definition of done:
+
+- команда может пройти launch checklist без ручных допущений
+
+## Что делать первым
+
+### P0
+
+- production baseline: migrations, health, env policy, docs
+
+### P1
+
+- real-data cleanup: dashboard, services, marketplace, weather
+
+### P2
+
+- trust + community chat + provider cabinet
+
+### P3
+
+- frontend modularization + release polish
 
 ## Immediate Next Tasks
 
-1. Replace remaining hardcoded frontend URLs in modified UI files once their current changes are reviewed.
-2. Add dashboard, weather, competition, and chat backend modules.
-3. Design the mobile-first home dashboard screen contract.
+1. Перевести backend config на env-управление `synchronize` и подготовить migration-first flow.
+2. Добавить `GET /health` и включить его в launch checklist.
+3. Обновить документацию под Kazakhstan launch scope.
+4. Разбить frontend `page.tsx` на доменные модули, начиная с `dashboard` и `market`.
+5. Убрать seed-on-read из `services` и заменить его управляемыми launch-данными.

@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { UserRole } from '../users/entities/user.entity';
 import { FarmPlot } from './entities/farm-plot.entity';
 import { CreateFarmPlotDto } from './dto/create-farm-plot.dto';
 
@@ -141,7 +143,11 @@ export class FarmPlotsService {
         normalizedGeometry,
       );
 
-      const competition = await this.getCompetitionByPlotId(createdPlot.id);
+      const competition = await this.getCompetitionByPlotId(
+        createdPlot.id,
+        userId,
+        UserRole.FARMER,
+      );
       const projectedIncomeKzt = Math.round(
         Number(savedPlot.areaSizeHectares || 0) *
           (competition.level === 'low'
@@ -208,11 +214,32 @@ export class FarmPlotsService {
     }
   }
 
-  findAll(): Promise<FarmPlot[]> {
-    return this.plotRepository.find();
+  findAll(userId: string, role?: UserRole): Promise<FarmPlot[]> {
+    if (role === UserRole.ADMIN) {
+      return this.plotRepository.find({
+        order: { createdAt: 'DESC' },
+      });
+    }
+
+    return this.plotRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
   }
 
-  async getCompetitionByPlotId(id: string, radiusKm = 5) {
+  findMine(userId: string): Promise<FarmPlot[]> {
+    return this.plotRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async getCompetitionByPlotId(
+    id: string,
+    userId: string,
+    role: UserRole,
+    radiusKm = 5,
+  ) {
     if (!radiusKm || Number(radiusKm) <= 0) {
       throw new BadRequestException('radiusKm must be greater than 0');
     }
@@ -223,6 +250,10 @@ export class FarmPlotsService {
 
     if (!plot) {
       throw new NotFoundException('Farm plot not found');
+    }
+
+    if (role !== UserRole.ADMIN && plot.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this farm plot');
     }
 
     if (!plot.cropType) {
@@ -306,7 +337,21 @@ export class FarmPlotsService {
     };
   }
 
-  async update(id: string, updateData: Partial<FarmPlot>): Promise<FarmPlot> {
+  async update(
+    id: string,
+    userId: string,
+    role: UserRole,
+    updateData: Partial<FarmPlot>,
+  ): Promise<FarmPlot> {
+    const plot = await this.plotRepository.findOne({ where: { id } });
+    if (!plot) {
+      throw new NotFoundException('Farm plot not found');
+    }
+
+    if (role !== UserRole.ADMIN && plot.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this farm plot');
+    }
+
     await this.plotRepository.update(id, {
       ...updateData,
       plantingDate:
@@ -317,7 +362,16 @@ export class FarmPlotsService {
     return this.plotRepository.findOneByOrFail({ id });
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, userId: string, role: UserRole): Promise<void> {
+    const plot = await this.plotRepository.findOne({ where: { id } });
+    if (!plot) {
+      throw new NotFoundException('Farm plot not found');
+    }
+
+    if (role !== UserRole.ADMIN && plot.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this farm plot');
+    }
+
     await this.plotRepository.delete(id);
   }
 }

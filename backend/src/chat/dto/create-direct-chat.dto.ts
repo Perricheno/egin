@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsObject, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class CreateDirectChatDto {
   @ApiProperty()
@@ -15,6 +15,7 @@ export class CreateDirectChatDto {
 export class SendMessageDto {
   @ApiProperty()
   @IsString()
+  @MaxLength(1000)
   body: string;
 
   @ApiPropertyOptional({ default: 'text' })
@@ -26,4 +27,9 @@ export class SendMessageDto {
   @IsOptional()
   @IsString()
   attachmentUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
 }

@@ -1,537 +1,256 @@
-# AGRO APP MVP Blueprint
+# AgriPlan Launch Blueprint
 
-## Product Goal
+## 1. Позиционирование продукта
 
-Build a mobile-first agriculture platform for Kazakhstan that helps farmers:
+AgriPlan v1 запускается не как классический маркетплейс, а как web-first экосистема фермера для Казахстана.
 
-- plan crops using map intelligence
-- avoid oversupply and nearby competition
-- sell directly through a marketplace
-- communicate inside the app instead of WhatsApp or Telegram
-- receive explainable AI recommendations with confidence scores
+Пользовательский контур v1:
 
-## MVP Decision
+- планирование полей и культур
+- учет культур и сезонного статуса
+- погодные сигналы и уведомления
+- инсайты и рекомендации
+- продажа через лиды и переговоры
+- поиск услуг и поставщиков
+- прямой и региональный чат
+- инфоцентр по новостям, субсидиям и логистике
 
-For this repository, the fastest path to pilot is:
+Принципы запуска:
 
-- `NestJS` backend
-- `PostgreSQL + PostGIS`
-- current `Next.js` frontend optimized for mobile UX
-- `Capacitor` packaging for iOS and Android after MVP flows are stable
+- первый запуск только для Казахстана
+- web-first, Capacitor как оболочка после стабилизации web UX
+- сделки закрываются в чате, без встроенных онлайн-платежей
+- подписки в v1 не продаются, допускается только внутренняя логика entitlements
+- чат ограничен прикладными сценариями, а не превращается в соцсеть
 
-This keeps the current codebase usable and avoids a premature rewrite to React Native. If the pilot succeeds and mobile complexity grows, the mobile client can later be reimplemented in React Native while keeping the same backend contracts.
+## 2. Текущее состояние репозитория
 
-## MVP Scope
+Уже реализовано:
 
-Included in first production-ready MVP:
+- авторизация по телефону и паролю
+- карта полей с сохранением полигонов
+- цвета культур
+- dashboard
+- модальное окно деталей культуры
+- погодный виджет и уведомления
+- инфоцентр
+- маркетплейс с базовой логикой рекомендаций
+- каталог услуг
+- прямой чат
+- профиль и заказы
+- Capacitor web wrapper и заготовка под iOS
 
-- phone auth
-- home dashboard
-- map with field polygons
-- crop assignment per polygon
-- competition scoring within configurable radius
-- weather widget and alerts
-- basic marketplace listings
-- direct chat
-- AI insight card with confidence score
+Частично реализовано:
 
-Deferred after MVP:
+- аналитика и прогнозы rule-based
+- погода привязана к региону, а не к конкретному полю
+- услуги и часть поставщиков seeded / placeholder
+- инфоцентр агрегирует внешние источники
+- покупка завершается переговорами в чате
 
-- regional/global chat
-- export intelligence
-- services marketplace
-- subscriptions billing
-- advanced trust/reputation
-- full ML forecasting stack
+Отсутствует:
 
-## System Architecture
+- региональные и общие каналы чата
+- отзывы и trust layer
+- кабинет поставщика услуг
+- свежесть и хранение товара в маркетплейсе
+- moderation tooling
+- migration-first production setup
+- Android build
+- полноценные тесты и release hardening
 
-```text
-[ Mobile App Shell ]
-  - Next.js mobile UI
-  - Capacitor wrapper for iOS/Android
-  - local storage and offline queue
-        |
-        v
-[ API Gateway / BFF - NestJS ]
-  - auth/session
-  - mobile response shaping
-  - subscription gating
-  - rate limiting
-        |
-        +--> [ Auth Module ]
-        +--> [ Users Module ]
-        +--> [ Farm Plots Module ]
-        +--> [ Crops Module ]
-        +--> [ Competition Module ]
-        +--> [ Weather Module ]
-        +--> [ Marketplace Module ]
-        +--> [ Chat Module ]
-        +--> [ Analytics Module ]
-        +--> [ Notifications Module ]
-        |
-        +--> [ AI Service Gateway ]
-                |
-                +--> [ Python: Competition Engine ]
-                +--> [ Python: Yield/Income Forecast Engine ]
-                +--> [ Python: Recommendation Engine ]
-
-[ PostgreSQL + PostGIS ]
-[ Redis ]
-[ S3/GCS object storage ]
-[ Queue: SQS/RabbitMQ ]
-[ Observability: Sentry + Prometheus + Grafana ]
-```
-
-## Database Schema
-
-### Core tables
-
-`users`
-- id
-- phone
-- full_name
-- password_hash
-- role
-- region
-- district
-- village
-- preferred_language
-- verified_status
-- trust_score
-- subscription_plan
-- created_at
-- updated_at
-
-`farms`
-- id
-- user_id
-- name
-- region
-- district
-- village
-- total_area_ha
-
-`farm_plots`
-- id
-- farm_id
-- user_id
-- title
-- region
-- district
-- village
-- area_size_hectares
-- geometry polygon
-- centroid point
-- crop_id nullable
-- fill_color
-- season_year
-- planting_status
-- competition_score nullable
-- competition_level nullable
-- predicted_income nullable
-- created_at
-- updated_at
-
-`crops`
-- id
-- code
-- name_ru
-- name_kk
-- name_en
-- color_hex
-- growth_days
-- base_cost_per_ha
-- avg_yield_per_ha
-- shelf_life_days
-
-`crop_stages`
-- id
-- crop_id
-- stage_name
-- day_from
-- day_to
-- tips_text
-- risk_notes
-
-`competition_snapshots`
-- id
-- plot_id
-- crop_id
-- radius_km
-- nearby_same_crop_area_ha
-- nearby_same_crop_farm_count
-- regional_listing_volume
-- harvest_overlap_index
-- score
-- level
-- confidence
-- calculated_at
-
-`weather_snapshots`
-- id
-- geo_hash
-- date
-- temp_min
-- temp_max
-- precipitation_mm
-- wind_speed
-- humidity
-- source
-
-`weather_alerts`
-- id
-- region
-- district
-- alert_type
-- severity
-- start_at
-- end_at
-- message
-
-`marketplace_listings`
-- id
-- seller_user_id
-- plot_id nullable
-- crop_id nullable
-- listing_type
-- title
-- description
-- price
-- quantity
-- unit
-- expires_at
-- region
-- district
-- village
-- location_label
-- image_url
-- visibility_status
-- status
-- created_at
-- updated_at
-
-`chats`
-- id
-- type
-- listing_id nullable
-- region nullable
-- district nullable
-- created_by
-- created_at
-
-`chat_participants`
-- id
-- chat_id
-- user_id
-- last_read_at
-
-`messages`
-- id
-- chat_id
-- sender_id
-- type
-- body
-- attachment_url
-- metadata_json
-- created_at
-
-`reviews`
-- id
-- from_user_id
-- to_user_id
-- listing_id nullable
-- rating
-- comment
-- created_at
-
-`news_items`
-- id
-- type
-- title
-- summary
-- body
-- region nullable
-- source_url
-- published_at
-
-## Key relations
-
-- users -> farms -> farm_plots
-- crops -> crop_stages
-- farm_plots + crops -> competition_snapshots
-- users -> marketplace_listings
-- chats -> messages
-- users -> reviews
-
-## API Structure
-
-### Auth
-
-- `POST /auth/register`
-- `POST /auth/login`
-- `GET /auth/health`
-
-### User
-
-- `GET /users/me`
-- `PATCH /users/me`
-
-### Farm plots
-
-- `GET /farm-plots`
-- `POST /farm-plots`
-- `GET /farm-plots/:id`
-- `PATCH /farm-plots/:id`
-- `DELETE /farm-plots/:id`
-- `POST /farm-plots/:id/assign-crop`
-- `GET /farm-plots/:id/competition`
-
-### Crops
-
-- `GET /crops`
-- `GET /crops/:id`
-- `GET /crops/:id/lifecycle`
-
-### Weather
-
-- `GET /weather/current`
-- `GET /weather/forecast`
-- `GET /weather/alerts`
-
-### Marketplace
-
-- `GET /marketplace/listings`
-- `POST /marketplace/listings`
-- `GET /marketplace/listings/:id`
-- `PATCH /marketplace/listings/:id`
-- `POST /marketplace/listings/:id/publish`
-
-### Chat
-
-- `POST /chats/direct`
-- `GET /chats`
-- `GET /chats/:id/messages`
-- `POST /chats/:id/messages`
+## 3. Launch Scope
 
 ### Dashboard
 
-- `GET /dashboard/home`
-- `GET /dashboard/notifications`
-- `GET /dashboard/insights`
+Перед запуском dashboard должен:
 
-## AI Logic
+- работать для пустого аккаунта, частично заполненного и полного
+- использовать реальные данные вместо заглушек
+- показывать карточный UI с четкими CTA
+- давать короткие explainable insights без ложной точности
 
-### Competition score
+### Модуль культуры
 
-```text
-competition_score =
-  w1 * normalized(nearby same-crop area within radius) +
-  w2 * normalized(nearby same-crop farmer count) +
-  w3 * normalized(regional listing volume for same crop) +
-  w4 * normalized(harvest overlap in same time window)
-```
+Текущая модалка должна вырасти в отдельный продуктовый модуль с данными:
 
-Default thresholds:
+- дата посадки
+- прошедшие и оставшиеся дни
+- стадия роста
+- прогноз урожая
+- условия хранения
+- срок годности / shelf life
 
-- `0.00 - 0.33`: low
-- `0.34 - 0.66`: medium
-- `0.67 - 1.00`: high
+Вкладки:
 
-Marketplace visibility rule:
+- советы
+- риски
+- лайфхаки
 
-- `low competition -> hidden`
-- `medium or high competition -> visible`
+### Marketplace
 
-This rule should remain configurable at the service level, not hardcoded into the UI.
+Marketplace в v1 работает как lead-generation канал.
 
-### Yield prediction
+Обязательные поля и сигналы:
 
-Inputs:
+- фото
+- срок свежести
+- срок и условия хранения
+- доставка
+- рейтинг и trust продавца
+- регион рекомендации
+- модель продажи
 
-- crop
-- region
-- planting date
-- irrigation
-- soil type
-- historical weather
-- historical yield
-- area
+Решения на карточке:
 
-MVP implementation:
+- продать сейчас
+- скрыть
+- продавать локально
+- найти ближайшего покупателя
 
-- rule-based baseline
-- optional Python model later using `XGBoost` or `LightGBM`
+### Services
 
-### Income prediction
+Запусковой scope по услугам:
 
-```text
-predicted_profit =
-  (predicted_yield_tons * expected_market_price)
-  - estimated_input_costs
-  - logistics_cost
-  - storage_loss_risk
-```
+- полноценный профиль поставщика
+- CRUD объявлений
+- география работы
+- доступность
+- SLA ответа
+- статистика заявок
+- прямой чат
 
-### Recommendation engine
+### Chat
 
-Every recommendation must include:
+На старте оставляем прямой чат и добавляем community chat через REST + polling.
 
-- recommendation text
-- why it is recommended
-- top factors
-- confidence score
+Launch scope:
 
-Example:
+- прямые чаты
+- региональные каналы: область / район / село / культура
+- message types: текст, фото, локация, предложение
+- базовая модерация и контроль доступа
 
-```text
-Recommend: sunflower
-Why:
-- low nearby competition
-- favorable 10-day weather window
-- strong district demand
-Confidence: 0.76
-```
+### Trust Layer
 
-## UI and UX Breakdown
+Нужны отзывы и агрегированные trust-сигналы для:
 
-### Core screens
+- товаров
+- услуг
+- продавцов / исполнителей
 
-`Auth`
-- phone login and registration
-- large buttons
-- role picker with icons
+На UI показываются:
 
-`Home`
-- weather summary
-- field count
-- average competition badge
-- projected income summary
-- AI insight card
-- quick actions
+- рейтинг
+- количество сделок
+- надежность
 
-`Map`
-- full-screen map
-- colored crop polygons
-- large draw button
-- save flow in bottom sheet
+### Info Center
 
-`Field sheet`
-- plot area
-- selected crop
-- competition badge
-- visibility decision
-- projected income
+Инфоцентр должен содержать:
 
-`Marketplace`
-- large cards
-- photo, price, quantity, expiration, location
-- city, region, village filters
-- write/buy CTA
+- новости
+- субсидии
+- экспорт / импорт
+- логистические ограничения
 
-`Chat`
-- direct chat first
-- image message support later
-- transaction context for marketplace deals
+Детальные страницы:
 
-`Profile`
-- account info
-- user plots
-- orders/deals
-- settings
+- требования
+- сроки
+- документы
+- ограничения
+- логистика
 
-### UX principles
+## 4. Архитектурные решения
 
-- one-thumb operation
-- minimum text
-- maximum iconography and color cues
-- large touch targets
-- offline-safe drafts where possible
+### Platform
 
-## MVP Roadmap
+- `Next.js` остается основным web-клиентом
+- `NestJS + TypeORM + PostgreSQL/PostGIS` остается backend-платформой
+- `Capacitor` используется после стабилизации web flows
+- `REST + polling` используется для чатов v1 вместо WebSocket
 
-### Week 1
+### Production constraints
 
-- freeze MVP scope
-- create architecture and domain contracts
-- remove frontend hardcoded API URLs
-- define env strategy
-- clean backend modules
+- `synchronize: true` убирается, схема ведется через миграции
+- health-checks обязательны для деплоя
+- ошибки API должны быть единообразными и наблюдаемыми
+- логирование и мониторинг добавляются до запуска
+- роли и права должны покрывать farmer, buyer, seller/provider, admin, moderator
 
-### Week 2
+## 5. Целевые изменения по данным
 
-- complete auth and profile flow
-- stabilize plot creation and editing
-- add crop assignment flow
-- add dashboard summary endpoint
+### User
 
-### Week 3
+- страна
+- регион
+- район
+- населенный пункт
+- язык
+- подписка / entitlement state
+- trust-метрики
 
-- implement competition scoring v1
-- implement marketplace visibility rule
-- add marketplace CRUD
-- add weather integration
+### MarketplaceListing
 
-### Week 4
+- фото
+- доставка
+- срок свежести
+- срок хранения
+- регион рекомендаций
+- модель продажи
+- trust продавца
 
-- add direct chat
-- add AI insight card
-- optimize mobile layout
-- integrate Capacitor and validate in Xcode
+### ServiceListing
 
-## Monetization
+- доступность
+- зона работы
+- SLA ответа
+- статистика
+- профиль поставщика
 
-`Free`
-- map
-- basic competition view
-- chat
-- limited listings
+### Chat
 
-`Pro`
-- AI insights
-- weather risk alerts
-- income prediction
-- crop recommendations
+- прямой чат
+- региональные каналы
+- типы сообщений: текст, фото, локация, предложение
 
-`Business`
-- export signals
-- promoted listings
-- advanced analytics
-- multi-user account access
+### Новые модули
 
-Additional revenue:
+- reviews
+- subscriptions / entitlements
+- community chat
+- crop knowledge
+- market signals
 
-- promoted listings
-- logistics referrals
-- agronomist leads
-- supplier partnerships
+## 6. Production Readiness
 
-## Scaling Strategy
+Перед релизом обязательно:
 
-Phase 1:
+- migrations вместо auto-sync
+- health-checks
+- error handling policy
+- логирование и мониторинг
+- обновленная документация
+- release checklist
+- ownership map
 
-- NestJS modular monolith
-- single Postgres instance with PostGIS
-- Redis for cache and sessions
-- queue for asynchronous analytics
+## 7. Вне scope v1
 
-Phase 2:
+- встроенные платежи
+- публичная подписочная монетизация
+- Android production build до стабилизации web
+- full ML forecasting stack
+- полноформатная social/community платформа
 
-- split chat and marketplace services
-- add read replicas
-- move AI workloads fully to Python workers
-- media storage via CDN-backed object storage
+## 8. Критерии запуска
 
-Phase 3:
+Продукт можно считать готовым к launch, когда:
 
-- country-aware content and crop catalogs
-- provider abstraction for weather and pricing feeds
-- multi-region deployment
-
-## Current Repository Priorities
-
-1. Introduce shared frontend API config and environment variables.
-2. Remove remaining hardcoded backend URLs.
-3. Reshape frontend around mobile-first screen flow.
-4. Expand backend around dashboard, competition, weather, and chat.
-5. Add Capacitor only after the above flows are stable.
+- новый пользователь понимает, что делать дальше без ручного онбординга
+- dashboard не ломается на пустых и неполных данных
+- маркетплейс и услуги ведут в переговоры внутри приложения
+- чат покрывает buyer-seller и farmer-provider сценарии
+- данные по погоде, инфоцентру и рекомендациям объяснимы и не выглядят как заглушка
+- backend запускается без `synchronize: true`
+- документация описывает фактический launch scope, а не MVP прошлого этапа

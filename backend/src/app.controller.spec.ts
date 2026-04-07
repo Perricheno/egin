@@ -15,8 +15,25 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return API metadata', () => {
+      expect(appController.getRoot()).toEqual(
+        expect.objectContaining({
+          name: 'AgriPlan API',
+          status: 'ok',
+          healthPath: '/health',
+        }),
+      );
+    });
+  });
+
+  describe('health', () => {
+    it('should return an ok health payload', () => {
+      expect(appController.getHealth()).toEqual(
+        expect.objectContaining({
+          status: 'ok',
+          environment: expect.any(String),
+        }),
+      );
     });
   });
 });

@@ -10,6 +10,14 @@ import {
 } from './entities/marketplace-listing.entity';
 import { CreateListingDto, UpdateListingDto } from './dto/create-listing.dto';
 
+type CompetitionLevel = 'low' | 'medium' | 'high';
+
+type SellerTrust = {
+  score: number;
+  dealsCount: number;
+  reliability: 'new' | 'stable' | 'trusted';
+};
+
 @Injectable()
 export class MarketplaceService {
   constructor(
@@ -19,7 +27,7 @@ export class MarketplaceService {
     private readonly plotRepository: Repository<FarmPlot>,
   ) {}
 
-  private toCompetitionLevel(score: number): 'low' | 'medium' | 'high' {
+  private toCompetitionLevel(score: number): CompetitionLevel {
     if (score >= 0.67) {
       return 'high';
     }
@@ -31,26 +39,145 @@ export class MarketplaceService {
     return 'low';
   }
 
-  private async evaluateVisibility(farmerId: string, cropId: string) {
+  private normalizeOptionalText(value?: string | null) {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (value === null) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private async getSellerTrust(farmerId: string): Promise<SellerTrust> {
+    const raw = await this.listingRepository
+      .createQueryBuilder('listing')
+      .select('COUNT(*)', 'totalCount')
+      .addSelect(
+        `SUM(CASE WHEN listing.status = :soldStatus THEN 1 ELSE 0 END)`,
+        'soldCount',
+      )
+      .addSelect(
+        `SUM(CASE WHEN listing.status = :activeStatus THEN 1 ELSE 0 END)`,
+        'activeCount',
+      )
+      .where('listing.farmerId = :farmerId', { farmerId })
+      .setParameters({
+        soldStatus: ListingStatus.SOLD,
+        activeStatus: ListingStatus.ACTIVE,
+      })
+      .getRawOne<{
+        totalCount: string;
+        soldCount: string;
+        activeCount: string;
+      }>();
+
+    const totalCount = Number(raw?.totalCount || 0);
+    const soldCount = Number(raw?.soldCount || 0);
+    const activeCount = Number(raw?.activeCount || 0);
+    const scoreBase = Math.min(soldCount * 0.35 + activeCount * 0.08 + 3.5, 5);
+    const score = Number(scoreBase.toFixed(1));
+
+    let reliability: SellerTrust['reliability'] = 'new';
+    if (soldCount >= 5) {
+      reliability = 'trusted';
+    } else if (totalCount >= 2) {
+      reliability = 'stable';
+    }
+
+    return {
+      score,
+      dealsCount: soldCount,
+      reliability,
+    };
+  }
+
+  private async mapListing(listing: MarketplaceListing) {
+    const sellerTrust = await this.getSellerTrust(listing.farmerId);
+
+    return {
+      id: listing.id,
+      cropId: listing.cropId,
+      category: listing.category,
+      title: listing.title,
+      description: listing.description,
+      quantity: Number(listing.quantity),
+      unit: listing.unit,
+      price: Number(listing.price),
+      currency: listing.currency,
+      availableFrom: listing.availableFrom,
+      location: listing.location,
+      imageUrl: listing.imageUrl ?? null,
+      deliveryAvailable: listing.deliveryAvailable,
+      deliveryNotes: listing.deliveryNotes ?? null,
+      freshnessDays: listing.freshnessDays ?? null,
+      storageLifeDays: listing.storageLifeDays ?? null,
+      storageConditions: listing.storageConditions ?? null,
+      recommendedRegion: listing.recommendedRegion ?? null,
+      saleModel: listing.saleModel,
+      status: listing.status,
+      visibilityStatus: listing.visibilityStatus,
+      competitionLevel: listing.competitionLevel ?? null,
+      competitionScore:
+        listing.competitionScore !== null && listing.competitionScore !== undefined
+          ? Number(listing.competitionScore)
+          : null,
+      visibilityReason: listing.visibilityReason ?? null,
+      recommendationStatus: listing.recommendationStatus ?? null,
+      recommendationTitle: listing.recommendationTitle ?? null,
+      recommendationMessage: listing.recommendationMessage ?? null,
+      recommendedActions: listing.recommendedActions ?? null,
+      sellerTrust,
+      farmer: listing.farmer
+        ? {
+            id: listing.farmer.id,
+            fullName: listing.farmer.fullName,
+            region: listing.farmer.region,
+          }
+        : undefined,
+      createdAt: listing.createdAt,
+      updatedAt: listing.updatedAt,
+    };
+  }
+
+  private async evaluateVisibility(
+    farmerId: string,
+    listingInput: {
+      cropId: string;
+      location: string;
+      freshnessDays?: number | null;
+      deliveryAvailable?: boolean;
+      recommendedRegion?: string | null;
+      storageLifeDays?: number | null;
+    },
+  ) {
     const plots = await this.plotRepository.find({
-      where: { userId: farmerId, cropType: cropId },
+      where: { userId: farmerId, cropType: listingInput.cropId },
     });
+
+    const normalizedRecommendedRegion =
+      this.normalizeOptionalText(listingInput.recommendedRegion) ??
+      this.normalizeOptionalText(listingInput.location);
 
     if (plots.length === 0) {
       return {
         visibilityStatus: ListingVisibilityStatus.VISIBLE,
         competitionLevel: null,
         competitionScore: null,
+        recommendedRegion: normalizedRecommendedRegion,
         visibilityReason:
           'Для этой культуры пока нет связанных полей у фермера. Объявление оставлено видимым до появления геоданных.',
         recommendationStatus: ListingRecommendationStatus.CAUTION,
-        recommendationTitle: 'Нужно больше данных',
+        recommendationTitle: 'Нужно больше полевых данных',
         recommendationMessage:
-          'Система пока не видит связанных полей по этой культуре. Лучше добавить геоданные и проверить спрос перед масштабной публикацией.',
+          'Система не видит связанных полей по этой культуре. Публиковать можно, но точность рекомендаций пока ограничена.',
         recommendedActions: [
-          'Опубликовать сейчас',
+          'Продать сейчас',
           'Добавить поле на карту',
-          'Проверить спрос локально',
+          'Продавать локально',
         ],
       };
     }
@@ -61,87 +188,141 @@ export class MarketplaceService {
     );
     const normalizedArea = Math.min(totalArea / 200, 1);
     const normalizedPlotCount = Math.min(plots.length / 10, 1);
+    const freshnessFactor = Math.min(
+      Math.max(Number(listingInput.freshnessDays || 0), 0) / 14,
+      1,
+    );
+    const storageFactor = Math.min(
+      Math.max(Number(listingInput.storageLifeDays || 0), 0) / 30,
+      1,
+    );
+    const logisticsFactor = listingInput.deliveryAvailable ? 0.12 : 0;
     const score = Number(
-      Math.min(normalizedArea * 0.7 + normalizedPlotCount * 0.3, 1).toFixed(2),
+      Math.min(
+        normalizedArea * 0.58 +
+          normalizedPlotCount * 0.24 +
+          (1 - freshnessFactor) * 0.1 +
+          (1 - storageFactor) * 0.08 -
+          logisticsFactor,
+        1,
+      ).toFixed(2),
     );
     const competitionLevel = this.toCompetitionLevel(score);
     const visibilityStatus = ListingVisibilityStatus.VISIBLE;
 
-    const recommendation =
-      competitionLevel === 'high'
-        ? {
-            visibilityReason:
-              `По культуре "${cropId}" сейчас высокая конкуренция. Объявление остается активным, но его лучше публиковать частями и отслеживать цену.`,
-            recommendationStatus: ListingRecommendationStatus.CAUTION,
-            recommendationTitle: 'Высокая конкуренция',
-            recommendationMessage:
-              'Сейчас рынок плотный. Рекомендуем не выставлять большой объем сразу и сделать упор на локальную продажу или частичную выдачу.',
-            recommendedActions: [
-              'Опубликовать все равно',
-              'Продавать локально',
-              'Разделить объем на части',
-              'Проверить цену через 5-7 дней',
-            ],
-          }
-        : competitionLevel === 'medium'
-          ? {
-              visibilityReason:
-                `По культуре "${cropId}" конкуренция средняя. Объявление доступно в маркетплейсе, но стоит следить за спросом и соседними предложениями.`,
-              recommendationStatus: ListingRecommendationStatus.HEALTHY,
-              recommendationTitle: 'Нормальное окно продаж',
-              recommendationMessage:
-                'Спрос выглядит рабочим. Можно публиковать, но лучше следить за локальным рынком и не завышать цену.',
-              recommendedActions: [
-                'Опубликовать сейчас',
-                'Следить за спросом',
-                'Проверить соседние цены',
-              ],
-            }
-          : {
-              visibilityReason:
-                `По культуре "${cropId}" рыночный интерес пока низкий. Объявление не скрывается автоматически, но будет показано без приоритета в рекомендациях.`,
-              recommendationStatus: ListingRecommendationStatus.LOW_INTEREST,
-              recommendationTitle: 'Низкий рыночный интерес',
-              recommendationMessage:
-                'Сейчас лучше не рассчитывать на широкий спрос. Попробуйте локальную продажу, опт или публикацию позже.',
-              recommendedActions: [
-                'Опубликовать все равно',
-                'Скрыть временно',
-                'Продать локально',
-                'Найти покупателя рядом',
-              ],
-            };
+    if (competitionLevel === 'high') {
+      return {
+        visibilityStatus,
+        competitionLevel,
+        competitionScore: score,
+        recommendedRegion: normalizedRecommendedRegion,
+        visibilityReason:
+          `По культуре "${listingInput.cropId}" высокая конкуренция. Публикацию лучше не расширять без логистического преимущества.`,
+        recommendationStatus: ListingRecommendationStatus.CAUTION,
+        recommendationTitle: 'Высокая конкуренция',
+        recommendationMessage:
+          listingInput.deliveryAvailable || (listingInput.freshnessDays ?? 0) <= 3
+            ? 'Лучше продавать быстро и ближе к покупателю: короткое окно свежести и плотный рынок требуют локальной сделки.'
+            : 'Лучше дробить объем, не завышать цену и искать ближайших покупателей вместо широкого охвата.',
+        recommendedActions: [
+          'Продавать локально',
+          'Найти ближайшего покупателя',
+          'Скрыть',
+          'Продать сейчас',
+        ],
+      };
+    }
+
+    if (competitionLevel === 'medium') {
+      return {
+        visibilityStatus,
+        competitionLevel,
+        competitionScore: score,
+        recommendedRegion: normalizedRecommendedRegion,
+        visibilityReason:
+          `По культуре "${listingInput.cropId}" конкуренция средняя. Объявление можно держать активным, если цена и логистика подтверждают спрос.`,
+        recommendationStatus: ListingRecommendationStatus.HEALTHY,
+        recommendationTitle: 'Рабочее окно продаж',
+        recommendationMessage:
+          listingInput.deliveryAvailable
+            ? 'У вас есть логистическое преимущество. Можно продавать сейчас и тестировать соседние регионы.'
+            : 'Лучше начать с локального спроса и постепенно расширять охват по региону.',
+        recommendedActions: [
+          'Продать сейчас',
+          'Продавать локально',
+          'Найти ближайшего покупателя',
+        ],
+      };
+    }
 
     return {
       visibilityStatus,
       competitionLevel,
       competitionScore: score,
-      ...recommendation,
+      recommendedRegion: normalizedRecommendedRegion,
+      visibilityReason:
+        `По культуре "${listingInput.cropId}" давление конкуренции низкое. Объявление можно продвигать активнее, если товар свежий и условия хранения понятны.`,
+      recommendationStatus: ListingRecommendationStatus.HEALTHY,
+      recommendationTitle: 'Низкая конкуренция',
+      recommendationMessage:
+        (listingInput.freshnessDays ?? 0) > 0 && (listingInput.freshnessDays ?? 0) <= 3
+          ? 'Товар лучше продавать быстро: окно свежеcти короткое, поэтому приоритет за ближайшим покупателем и моментальной сделкой.'
+          : 'Можно продавать сейчас и тестировать более широкий спрос без автоматического скрытия.',
+      recommendedActions: [
+        'Продать сейчас',
+        'Найти ближайшего покупателя',
+        'Продавать локально',
+      ],
     };
   }
 
-  async create(
-    farmerId: string,
-    createDto: CreateListingDto,
-  ): Promise<MarketplaceListing> {
-    const visibility = await this.evaluateVisibility(farmerId, createDto.cropId);
-
-    const listing = this.listingRepository.create({
-      ...createDto,
-      farmerId,
-      availableFrom: new Date(createDto.availableFrom),
-      ...visibility,
+  async create(farmerId: string, createDto: CreateListingDto) {
+    const visibility = await this.evaluateVisibility(farmerId, {
+      cropId: createDto.cropId,
+      location: createDto.location,
+      freshnessDays: createDto.freshnessDays,
+      deliveryAvailable: createDto.deliveryAvailable,
+      recommendedRegion: createDto.recommendedRegion,
+      storageLifeDays: createDto.storageLifeDays,
     });
-    return this.listingRepository.save(listing);
+
+    const listing = await this.listingRepository.save(
+      this.listingRepository.create({
+        ...createDto,
+        ...visibility,
+        farmerId,
+        availableFrom: new Date(createDto.availableFrom),
+        imageUrl: this.normalizeOptionalText(createDto.imageUrl) ?? null,
+        deliveryAvailable: createDto.deliveryAvailable ?? false,
+        deliveryNotes: this.normalizeOptionalText(createDto.deliveryNotes) ?? null,
+        freshnessDays: createDto.freshnessDays ?? null,
+        storageLifeDays: createDto.storageLifeDays ?? null,
+        storageConditions:
+          this.normalizeOptionalText(createDto.storageConditions) ?? null,
+        recommendedRegion:
+          visibility.recommendedRegion ??
+          this.normalizeOptionalText(createDto.recommendedRegion) ??
+          null,
+        saleModel: createDto.saleModel?.trim() || 'lead_chat',
+      }),
+    );
+
+    const withRelations = await this.listingRepository.findOne({
+      where: { id: listing.id },
+      relations: ['farmer'],
+    });
+
+    return this.mapListing(withRelations ?? listing);
   }
 
   async findAll(
     category?: string,
     search?: string,
-    sortBy: string = 'createdAt',
+    sortBy = 'createdAt',
     sortOrder: 'ASC' | 'DESC' = 'DESC',
-  ): Promise<MarketplaceListing[]> {
-    const query = this.listingRepository.createQueryBuilder('listing')
+  ) {
+    const query = this.listingRepository
+      .createQueryBuilder('listing')
       .leftJoinAndSelect('listing.farmer', 'farmer');
 
     query.andWhere('listing.status = :status', { status: ListingStatus.ACTIVE });
@@ -155,37 +336,52 @@ export class MarketplaceService {
 
     if (search) {
       query.andWhere(
-        '(LOWER(listing.title) LIKE LOWER(:search) OR LOWER(listing.location) LIKE LOWER(:search) OR LOWER(listing.cropId) LIKE LOWER(:search))',
+        '(LOWER(listing.title) LIKE LOWER(:search) OR LOWER(listing.location) LIKE LOWER(:search) OR LOWER(listing.cropId) LIKE LOWER(:search) OR LOWER(COALESCE(listing.recommendedRegion, \'\')) LIKE LOWER(:search))',
         { search: `%${search}%` },
       );
     }
 
     const validSortFields = ['createdAt', 'price'];
-    const actualSortBy = validSortFields.includes(sortBy) ? `listing.${sortBy}` : 'listing.createdAt';
+    const actualSortBy = validSortFields.includes(sortBy)
+      ? `listing.${sortBy}`
+      : 'listing.createdAt';
     const actualSortOrder = sortOrder === 'ASC' ? 'ASC' : 'DESC';
 
     query.orderBy(actualSortBy, actualSortOrder);
 
-    return query.getMany();
+    const listings = await query.getMany();
+    return Promise.all(listings.map((listing) => this.mapListing(listing)));
   }
 
-  async findMine(farmerId: string): Promise<MarketplaceListing[]> {
-    return this.listingRepository.find({
+  async findMine(farmerId: string) {
+    const listings = await this.listingRepository.find({
       where: { farmerId },
+      relations: ['farmer'],
       order: { updatedAt: 'DESC' },
     });
+
+    return Promise.all(listings.map((listing) => this.mapListing(listing)));
   }
 
-  async findOne(id: string): Promise<MarketplaceListing> {
-    const listing = await this.listingRepository.findOne({ where: { id }, relations: ['farmer'] });
-    if (!listing) throw new NotFoundException('Listing not found');
-    return listing;
+  async findOne(id: string) {
+    const listing = await this.listingRepository.findOne({
+      where: { id },
+      relations: ['farmer'],
+    });
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+    return this.mapListing(listing);
   }
 
-  async update(id: string, farmerId: string, updateDto: UpdateListingDto): Promise<void> {
-    // Only author can update
-    const authRecord = await this.listingRepository.findOne({ where: { id, farmerId }});
-    if (!authRecord) throw new NotFoundException('Listing not found or not yours');
+  async update(id: string, farmerId: string, updateDto: UpdateListingDto) {
+    const authRecord = await this.listingRepository.findOne({
+      where: { id, farmerId },
+      relations: ['farmer'],
+    });
+    if (!authRecord) {
+      throw new NotFoundException('Listing not found or not yours');
+    }
 
     const cropId = updateDto.cropId ?? authRecord.cropId;
     const recalculatedVisibility =
@@ -194,6 +390,11 @@ export class MarketplaceService {
             visibilityStatus: updateDto.visibilityStatus,
             competitionLevel: authRecord.competitionLevel ?? null,
             competitionScore: authRecord.competitionScore ?? null,
+            recommendedRegion:
+              this.normalizeOptionalText(updateDto.recommendedRegion) ??
+              authRecord.recommendedRegion ??
+              this.normalizeOptionalText(updateDto.location) ??
+              authRecord.location,
             visibilityReason:
               'Visibility status was manually overridden by the listing owner.',
             recommendationStatus:
@@ -202,22 +403,63 @@ export class MarketplaceService {
               authRecord.recommendationTitle ?? 'Ручное решение владельца',
             recommendationMessage:
               authRecord.recommendationMessage ??
-              'Владелец объявления вручную изменил видимость и приоритет публикации.',
-            recommendedActions: authRecord.recommendedActions ?? ['Опубликовать все равно'],
+              'Владелец объявления вручную изменил видимость и стратегию публикации.',
+            recommendedActions: authRecord.recommendedActions ?? [
+              'Продать сейчас',
+            ],
           }
-        : await this.evaluateVisibility(farmerId, cropId);
+        : await this.evaluateVisibility(farmerId, {
+            cropId,
+            location: updateDto.location ?? authRecord.location,
+            freshnessDays: updateDto.freshnessDays ?? authRecord.freshnessDays,
+            deliveryAvailable:
+              updateDto.deliveryAvailable ?? authRecord.deliveryAvailable,
+            recommendedRegion:
+              updateDto.recommendedRegion ?? authRecord.recommendedRegion,
+            storageLifeDays:
+              updateDto.storageLifeDays ?? authRecord.storageLifeDays,
+          });
 
     await this.listingRepository.update(id, {
       ...updateDto,
-      availableFrom: updateDto.availableFrom ? new Date(updateDto.availableFrom) : undefined,
       ...recalculatedVisibility,
+      availableFrom: updateDto.availableFrom
+        ? new Date(updateDto.availableFrom)
+        : undefined,
+      imageUrl:
+        updateDto.imageUrl !== undefined
+          ? this.normalizeOptionalText(updateDto.imageUrl)
+          : undefined,
+      deliveryNotes:
+        updateDto.deliveryNotes !== undefined
+          ? this.normalizeOptionalText(updateDto.deliveryNotes)
+          : undefined,
+      storageConditions:
+        updateDto.storageConditions !== undefined
+          ? this.normalizeOptionalText(updateDto.storageConditions)
+          : undefined,
+      recommendedRegion:
+        recalculatedVisibility.recommendedRegion !== undefined
+          ? recalculatedVisibility.recommendedRegion
+          : undefined,
+      saleModel: updateDto.saleModel?.trim() || undefined,
     });
+
+    return this.findOne(id);
   }
 
-  async remove(id: string, farmerId: string): Promise<void> {
-    const authRecord = await this.listingRepository.findOne({ where: { id, farmerId }});
-    if (!authRecord) throw new NotFoundException('Listing not found or not yours');
+  async remove(id: string, farmerId: string) {
+    const authRecord = await this.listingRepository.findOne({
+      where: { id, farmerId },
+    });
+    if (!authRecord) {
+      throw new NotFoundException('Listing not found or not yours');
+    }
 
     await this.listingRepository.delete(id);
+    return {
+      id,
+      deleted: true,
+    };
   }
 }

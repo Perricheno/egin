@@ -45,6 +45,15 @@ export class ServiceListing {
   @Column({ default: true })
   urgentAvailable: boolean;
 
+  @Column({ default: 'on_request' })
+  availability: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  serviceArea: string | null;
+
+  @Column({ default: 24 })
+  responseSlaHours: number;
+
   @Column({ default: true })
   isActive: boolean;
 

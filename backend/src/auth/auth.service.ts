@@ -43,7 +43,7 @@ export class AuthService {
   }
 
   async register(createUserDto: CreateUserDto) {
-    const newUser = await this.usersService.create(createUserDto);
+    const newUser = await this.usersService.createPublicUser(createUserDto);
     
     // Auto-login after registration
     const payload = { sub: newUser.id, phone: newUser.phone, role: newUser.role };

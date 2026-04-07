@@ -1,146 +1,30 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User, UserRole } from '../users/entities/user.entity';
+import { User } from '../users/entities/user.entity';
+import {
+  CreateServiceDto,
+  UpdateServiceDto,
+} from './dto/create-service.dto';
 import { ServiceCategory, ServiceListing } from './entities/service-listing.entity';
 
-type SeedProvider = {
-  phone: string;
-  fullName: string;
-  region: string;
-  district: string;
+type ServiceFilters = {
+  category?: string;
+  region?: string;
+  district?: string;
+  urgent?: string;
 };
 
-type SeedService = {
-  category: ServiceCategory;
-  title: string;
-  description: string;
-  priceFrom: number;
-  urgentAvailable: boolean;
-  country: string;
-  region: string;
-  district: string;
-  locality: string;
-  rating: number;
-  reviewsCount: number;
-  completedJobs: number;
-  imageUrl: string;
-  providerPhone: string;
+type ProviderStats = {
+  activeServices: number;
+  totalReviews: number;
+  totalCompletedJobs: number;
+  averageRating: number;
 };
-
-const SEED_PROVIDERS: SeedProvider[] = [
-  {
-    phone: '+77010000011',
-    fullName: 'Agro Service Talgar',
-    region: 'Алматинская область',
-    district: 'Талгарский район',
-  },
-  {
-    phone: '+77010000012',
-    fullName: 'Turkestan Agro Help',
-    region: 'Туркестанская область',
-    district: 'Сайрамский район',
-  },
-  {
-    phone: '+77010000013',
-    fullName: 'Kostanay Field Team',
-    region: 'Костанайская область',
-    district: 'г. Костанай',
-  },
-];
-
-const SEED_SERVICES: SeedService[] = [
-  {
-    category: ServiceCategory.MACHINERY_RENTAL,
-    title: 'Аренда трактора и сеялки',
-    description:
-      'Трактор, сеялка и оператор. Подходит для весеннего сева и коротких выездов по району.',
-    priceFrom: 45000,
-    urgentAvailable: true,
-    country: 'Казахстан',
-    region: 'Алматинская область',
-    district: 'Талгарский район',
-    locality: 'Талгар',
-    rating: 4.8,
-    reviewsCount: 37,
-    completedJobs: 112,
-    imageUrl:
-      'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?q=80&w=1200&auto=format&fit=crop',
-    providerPhone: '+77010000011',
-  },
-  {
-    category: ServiceCategory.IRRIGATION,
-    title: 'Настройка полива и проверка орошения',
-    description:
-      'Проверка линии полива, настройка давления, выезд агроспециалиста и рекомендации по влаге.',
-    priceFrom: 30000,
-    urgentAvailable: true,
-    country: 'Казахстан',
-    region: 'Туркестанская область',
-    district: 'Сайрамский район',
-    locality: 'Шымкент',
-    rating: 4.7,
-    reviewsCount: 24,
-    completedJobs: 61,
-    imageUrl:
-      'https://images.unsplash.com/photo-1464226184884-fa280b87c399?q=80&w=1200&auto=format&fit=crop',
-    providerPhone: '+77010000012',
-  },
-  {
-    category: ServiceCategory.AGRONOMIST,
-    title: 'Агроном на выезд по болезням растений',
-    description:
-      'Диагностика поля, рекомендации по болезням и защите, краткий план действий по культуре.',
-    priceFrom: 25000,
-    urgentAvailable: false,
-    country: 'Казахстан',
-    region: 'Костанайская область',
-    district: 'г. Костанай',
-    locality: 'Костанай',
-    rating: 4.9,
-    reviewsCount: 51,
-    completedJobs: 143,
-    imageUrl:
-      'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?q=80&w=1200&auto=format&fit=crop',
-    providerPhone: '+77010000013',
-  },
-  {
-    category: ServiceCategory.DELIVERY,
-    title: 'Доставка урожая по области',
-    description:
-      'Локальная доставка овощей и зерна, быстрый выезд, можно срочно в день заявки.',
-    priceFrom: 18000,
-    urgentAvailable: true,
-    country: 'Казахстан',
-    region: 'Алматинская область',
-    district: 'Талгарский район',
-    locality: 'Талгар',
-    rating: 4.6,
-    reviewsCount: 19,
-    completedJobs: 72,
-    imageUrl:
-      'https://images.unsplash.com/photo-1519003722824-194d4455a60c?q=80&w=1200&auto=format&fit=crop',
-    providerPhone: '+77010000011',
-  },
-  {
-    category: ServiceCategory.REPAIR,
-    title: 'Ремонт сельхозтехники на месте',
-    description:
-      'Диагностика и мелкий ремонт трактора, опрыскивателя и навесного оборудования на выезде.',
-    priceFrom: 35000,
-    urgentAvailable: true,
-    country: 'Казахстан',
-    region: 'Туркестанская область',
-    district: 'Сайрамский район',
-    locality: 'Шымкент',
-    rating: 4.5,
-    reviewsCount: 14,
-    completedJobs: 39,
-    imageUrl:
-      'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?q=80&w=1200&auto=format&fit=crop',
-    providerPhone: '+77010000012',
-  },
-];
 
 @Injectable()
 export class ServicesService {
@@ -178,77 +62,116 @@ export class ServicesService {
     }
   }
 
-  private async ensureSeedData() {
-    const count = await this.serviceRepository.count();
-    if (count > 0) {
-      return;
+  private async getProviderStatsMap(providerIds: string[]) {
+    if (providerIds.length === 0) {
+      return new Map<string, ProviderStats>();
     }
 
-    for (const provider of SEED_PROVIDERS) {
-      const existing = await this.userRepository.findOne({
-        where: { phone: provider.phone },
-      });
+    const raw = await this.serviceRepository
+      .createQueryBuilder('service')
+      .select('service.providerUserId', 'providerUserId')
+      .addSelect(
+        'SUM(CASE WHEN service.isActive = true THEN 1 ELSE 0 END)',
+        'activeServices',
+      )
+      .addSelect('SUM(service.reviewsCount)', 'totalReviews')
+      .addSelect('SUM(service.completedJobs)', 'totalCompletedJobs')
+      .addSelect('AVG(service.rating)', 'averageRating')
+      .where('service.providerUserId IN (:...providerIds)', { providerIds })
+      .groupBy('service.providerUserId')
+      .getRawMany<{
+        providerUserId: string;
+        activeServices: string;
+        totalReviews: string;
+        totalCompletedJobs: string;
+        averageRating: string;
+      }>();
 
-      if (!existing) {
-        await this.userRepository.save(
-          this.userRepository.create({
-            fullName: provider.fullName,
-            phone: provider.phone,
-            passwordHash: 'service-provider-seed',
-            role: UserRole.SELLER,
-            region: provider.region,
-            district: provider.district,
-          }),
-        );
-      }
-    }
-
-    const providers = await this.userRepository.find({
-      where: SEED_PROVIDERS.map((provider) => ({ phone: provider.phone })),
-    });
-    const providerMap = new Map(providers.map((provider) => [provider.phone, provider]));
-
-    await this.serviceRepository.save(
-      SEED_SERVICES.map((service) =>
-        this.serviceRepository.create({
-          category: service.category,
-          title: service.title,
-          description: service.description,
-          priceFrom: service.priceFrom,
-          urgentAvailable: service.urgentAvailable,
-          country: service.country,
-          region: service.region,
-          district: service.district,
-          locality: service.locality,
-          rating: service.rating,
-          reviewsCount: service.reviewsCount,
-          completedJobs: service.completedJobs,
-          imageUrl: service.imageUrl,
-          currency: 'KZT',
-          isActive: true,
-          providerUserId: providerMap.get(service.providerPhone)!.id,
-        }),
-      ),
+    return new Map(
+      raw.map((row) => [
+        row.providerUserId,
+        {
+          activeServices: Number(row.activeServices || 0),
+          totalReviews: Number(row.totalReviews || 0),
+          totalCompletedJobs: Number(row.totalCompletedJobs || 0),
+          averageRating: Number(Number(row.averageRating || 0).toFixed(1)),
+        },
+      ]),
     );
   }
 
-  async getCategories() {
-    await this.ensureSeedData();
+  private mapService(
+    service: ServiceListing,
+    providerStats?: ProviderStats,
+    includeOwnerMeta = false,
+  ) {
+    return {
+      id: service.id,
+      category: service.category,
+      categoryLabel: this.buildCategoryLabel(service.category),
+      title: service.title,
+      description: service.description,
+      priceFrom: Number(service.priceFrom),
+      currency: service.currency,
+      urgentAvailable: service.urgentAvailable,
+      availability: service.availability,
+      serviceArea: service.serviceArea,
+      responseSlaHours: service.responseSlaHours,
+      isActive: service.isActive,
+      country: service.country,
+      region: service.region,
+      district: service.district,
+      locality: service.locality,
+      rating: Number(service.rating),
+      reviewsCount: service.reviewsCount,
+      completedJobs: service.completedJobs,
+      imageUrl: service.imageUrl,
+      provider: {
+        id: service.providerUserId,
+        fullName: service.providerUser?.fullName ?? 'Service Provider',
+        region: service.providerUser?.region ?? service.region,
+        district: service.providerUser?.district ?? service.district,
+        stats: providerStats ?? {
+          activeServices: service.isActive ? 1 : 0,
+          totalReviews: service.reviewsCount,
+          totalCompletedJobs: service.completedJobs,
+          averageRating: Number(service.rating),
+        },
+      },
+      ...(includeOwnerMeta
+        ? {
+            createdAt: service.createdAt,
+            updatedAt: service.updatedAt,
+          }
+        : {}),
+    };
+  }
 
+  private async getOwnedServiceOrFail(id: string, userId: string) {
+    const service = await this.serviceRepository.findOne({
+      where: { id },
+      relations: ['providerUser'],
+    });
+
+    if (!service) {
+      throw new NotFoundException('Service not found');
+    }
+
+    if (service.providerUserId !== userId) {
+      throw new ForbiddenException('You can manage only your own services');
+    }
+
+    return service;
+  }
+
+  async getCategories() {
     return Object.values(ServiceCategory).map((category) => ({
       key: category,
       label: this.buildCategoryLabel(category),
     }));
   }
 
-  async listServices(filters?: {
-    category?: string;
-    region?: string;
-    district?: string;
-    urgent?: string;
-  }) {
-    await this.ensureSeedData();
-
+  async listServices(filters?: ServiceFilters) {
     const query = this.serviceRepository
       .createQueryBuilder('service')
       .leftJoinAndSelect('service.providerUser', 'providerUser')
@@ -279,36 +202,132 @@ export class ServicesService {
     }
 
     const services = await query.getMany();
+    const providerStatsMap = await this.getProviderStatsMap(
+      Array.from(new Set(services.map((service) => service.providerUserId))),
+    );
 
-    return services.map((service) => ({
-      id: service.id,
-      category: service.category,
-      categoryLabel: this.buildCategoryLabel(service.category),
-      title: service.title,
-      description: service.description,
-      priceFrom: Number(service.priceFrom),
-      currency: service.currency,
-      urgentAvailable: service.urgentAvailable,
-      country: service.country,
-      region: service.region,
-      district: service.district,
-      locality: service.locality,
-      rating: Number(service.rating),
-      reviewsCount: service.reviewsCount,
-      completedJobs: service.completedJobs,
-      imageUrl: service.imageUrl,
-      provider: {
-        id: service.providerUserId,
-        fullName: service.providerUser?.fullName ?? 'Service Provider',
-        region: service.providerUser?.region ?? service.region,
-        district: service.providerUser?.district ?? service.district,
-      },
-    }));
+    return services.map((service) =>
+      this.mapService(service, providerStatsMap.get(service.providerUserId)),
+    );
   }
 
   async getServiceById(id: string) {
-    await this.ensureSeedData();
-    const services = await this.listServices();
-    return services.find((service) => service.id === id) ?? null;
+    const service = await this.serviceRepository.findOne({
+      where: { id },
+      relations: ['providerUser'],
+    });
+
+    if (!service) {
+      return null;
+    }
+
+    const providerStatsMap = await this.getProviderStatsMap([service.providerUserId]);
+    return this.mapService(service, providerStatsMap.get(service.providerUserId), true);
+  }
+
+  async listMine(userId: string) {
+    const services = await this.serviceRepository.find({
+      where: { providerUserId: userId },
+      relations: ['providerUser'],
+      order: { updatedAt: 'DESC' },
+    });
+
+    const providerStatsMap = await this.getProviderStatsMap([userId]);
+    return services.map((service) =>
+      this.mapService(service, providerStatsMap.get(userId), true),
+    );
+  }
+
+  async getMyProviderProfile(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const services = await this.serviceRepository.find({
+      where: { providerUserId: userId },
+      order: { updatedAt: 'DESC' },
+    });
+    const providerStatsMap = await this.getProviderStatsMap([userId]);
+    const stats =
+      providerStatsMap.get(userId) ?? {
+        activeServices: 0,
+        totalReviews: 0,
+        totalCompletedJobs: 0,
+        averageRating: 0,
+      };
+
+    return {
+      provider: {
+        id: user.id,
+        fullName: user.fullName,
+        phone: user.phone,
+        email: user.email ?? null,
+        region: user.region,
+        district: user.district,
+      },
+      stats,
+      services: services.map((service) => ({
+        id: service.id,
+        title: service.title,
+        category: service.category,
+        isActive: service.isActive,
+        availability: service.availability,
+        responseSlaHours: service.responseSlaHours,
+        updatedAt: service.updatedAt,
+      })),
+    };
+  }
+
+  async createService(userId: string, dto: CreateServiceDto) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const service = await this.serviceRepository.save(
+      this.serviceRepository.create({
+        ...dto,
+        providerUserId: userId,
+        currency: dto.currency ?? 'KZT',
+        urgentAvailable: dto.urgentAvailable ?? false,
+        availability: dto.availability ?? 'on_request',
+        serviceArea: dto.serviceArea ?? null,
+        responseSlaHours: dto.responseSlaHours ?? 24,
+        isActive: dto.isActive ?? true,
+        rating: dto.rating ?? 4.5,
+        reviewsCount: dto.reviewsCount ?? 0,
+        completedJobs: dto.completedJobs ?? 0,
+        imageUrl: dto.imageUrl ?? null,
+      }),
+    );
+
+    return this.getServiceById(service.id);
+  }
+
+  async updateService(id: string, userId: string, dto: UpdateServiceDto) {
+    const existing = await this.getOwnedServiceOrFail(id, userId);
+
+    await this.serviceRepository.save(
+      this.serviceRepository.create({
+        ...existing,
+        ...dto,
+        serviceArea:
+          dto.serviceArea !== undefined ? dto.serviceArea : existing.serviceArea,
+        imageUrl: dto.imageUrl !== undefined ? dto.imageUrl : existing.imageUrl,
+      }),
+    );
+
+    return this.getServiceById(id);
+  }
+
+  async removeService(id: string, userId: string) {
+    await this.getOwnedServiceOrFail(id, userId);
+    await this.serviceRepository.delete({ id });
+
+    return {
+      id,
+      deleted: true,
+    };
   }
 }
