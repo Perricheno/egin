@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/agriplan-backend:latest
+    image: ghcr.io/${REPO_LC}/agriplan-backend:latest
     container_name: agriplan-backend
     restart: always
     ports:
@@ -15,7 +15,7 @@ services:
       - frontend
 
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/agriplan-frontend:latest
+    image: ghcr.io/${REPO_LC}/agriplan-frontend:latest
     container_name: agriplan-frontend
     restart: always
     ports:

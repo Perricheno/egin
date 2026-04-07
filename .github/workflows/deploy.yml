@@ -7,8 +7,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  FRONTEND_IMAGE_NAME: ${{ github.repository }}/agriplan-frontend
-  BACKEND_IMAGE_NAME: ${{ github.repository }}/agriplan-backend
 
 jobs:
   build-and-push:
@@ -20,6 +18,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set lowercase repo name
+        run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -36,7 +37,7 @@ jobs:
         with:
           context: ./frontend
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:latest
+          tags: ${{ env.REGISTRY }}/${{ env.REPO_LC }}/agriplan-frontend:latest
           build-args: |
              NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
           cache-from: type=gha
@@ -47,7 +48,7 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:latest
+          tags: ${{ env.REGISTRY }}/${{ env.REPO_LC }}/agriplan-backend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -79,8 +80,9 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Pull new images
-            docker pull ghcr.io/${{ github.repository }}/agriplan-frontend:latest
-            docker pull ghcr.io/${{ github.repository }}/agriplan-backend:latest
+            REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+            docker pull ghcr.io/${REPO_LC}/agriplan-frontend:latest
+            docker pull ghcr.io/${REPO_LC}/agriplan-backend:latest
       
       - name: Copy files and start deployment
         uses: appleboy/scp-action@v0.1.7
@@ -100,10 +102,11 @@ jobs:
           script: |
             cd ~/agriplan
             # Rename for docker-compose if needed
-            mv docker-compose.prod.yml docker-compose.yml
+            mv docker-compose.prod.yml docker-compose.yml 2>/dev/null || true
             
             # Startup the updated containers
             export GITHUB_REPOSITORY_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            export REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
             docker compose down
             docker compose up -d
             
