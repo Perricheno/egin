@@ -8,7 +8,8 @@ WORKDIR /app
 
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -22,7 +23,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-RUN npm run build
+# Caching .next/cache for extremely fast rebuilds
+RUN --mount=type=cache,target=/app/.next/cache \
+    npm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -48,9 +51,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
 
-EXPOSE 3001
+EXPOSE 3285
 
-ENV PORT=3001
+ENV PORT=3285
 ENV HOSTNAME="0.0.0.0"
 
 # server.js is created by next build from the standalone output

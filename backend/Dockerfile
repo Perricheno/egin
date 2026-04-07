@@ -7,7 +7,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies (including devDependencies)
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # Copy full source
 COPY . .
@@ -27,14 +28,15 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm ci --only=production
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --only=production
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
 # Provide a default port for Next locally vs Azure App Service vs Render
-EXPOSE 3008
-ENV PORT=3008
+EXPOSE 3284
+ENV PORT=3284
 
 # Start the application
 CMD ["node", "dist/main"]

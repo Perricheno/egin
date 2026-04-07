@@ -6,11 +6,11 @@ services:
     container_name: agriplan-backend
     restart: always
     ports:
-      - "3378:3008"
+      - "127.0.0.1:3284:3284"
     env_file:
       - .env
-    networks:
-      - agriplan-network
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
     depends_on:
       - frontend
 
@@ -19,12 +19,11 @@ services:
     container_name: agriplan-frontend
     restart: always
     ports:
-      - "3375:3001"
+      - "127.0.0.1:3285:3285"
     env_file:
       - .env
-    networks:
-      - agriplan-network
 
 networks:
-  agriplan-network:
-    driver: bridge
+  default:
+    name: agriplan_default
+    external: true
