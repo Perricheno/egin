@@ -56,6 +56,24 @@ const categoryIcons = {
   prices: TrendingUp,
 } as const;
 
+const buildTeaser = (text: string, maxLength = 120) => {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const firstSentence = normalized.match(/^.*?[.!?](\s|$)/)?.[0]?.trim();
+  if (firstSentence && firstSentence.length <= maxLength) {
+    return firstSentence;
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength).trimEnd()}...`;
+};
+
 export default function InfoCenterView({
   language,
   onBack,
@@ -77,10 +95,11 @@ export default function InfoCenterView({
           eyebrow: "Инфоорталық",
           title: "Жаңалықтар мен пайдалы ақпарат",
           subtitle:
-            "Субсидиялар, нарық, экспорт, импорт және баға сигналдарын бір жерден қараңыз.",
+            "Қысқа шолу, сосын қажет болса дереккөзге өтіңіз.",
           all: "Барлығы",
           back: "Артқа",
           open: "Толығырақ",
+          sourceFirst: "Толық материал дереккөзде ашылады.",
           sourceOpen: "Дереккөз",
           refresh: "Жаңарту",
           loading: "Ресми материалдар жүктелуде...",
@@ -99,10 +118,11 @@ export default function InfoCenterView({
           eyebrow: "Инфоцентр",
           title: "Новости и полезная информация",
           subtitle:
-            "Смотрите субсидии, рынок, экспорт, импорт и сигналы по ценам в одном месте.",
+            "Короткая сводка, дальше только переход к источнику.",
           all: "Все",
           back: "Назад",
           open: "Подробнее",
+          sourceFirst: "Полный материал открывается у источника.",
           sourceOpen: "Источник",
           refresh: "Обновить",
           loading: "Загружаем официальные материалы...",
@@ -199,7 +219,7 @@ export default function InfoCenterView({
               <h1 className="mt-2 text-2xl font-black tracking-tight">
                 {copy.title}
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/72">
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/72">
                 {copy.subtitle}
               </p>
             </div>
@@ -301,14 +321,14 @@ export default function InfoCenterView({
                           <h2 className="mt-4 max-w-xl text-2xl font-black leading-tight">
                             {item.title}
                           </h2>
-                          <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/80">
-                            {item.summary}
+                          <p className="mt-2 max-w-md text-sm leading-relaxed text-white/80">
+                            {buildTeaser(item.summary, 110)}
                           </p>
                         </div>
                       </div>
                       <div className="p-5">
-                        <p className="text-sm leading-relaxed text-[#17381C]">
-                          {item.content}
+                        <p className="text-sm text-[#2F6B3D]/72">
+                          {copy.sourceFirst}
                         </p>
                         <div className="mt-4 flex flex-wrap gap-2">
                           {item.isFeatured ? (
@@ -368,11 +388,8 @@ export default function InfoCenterView({
                         </div>
                       </div>
 
-                      <p className="mt-4 text-sm leading-relaxed text-[#2F6B3D]/76">
-                        {item.summary}
-                      </p>
-                      <p className="mt-3 text-sm leading-relaxed text-[#17381C]">
-                        {item.content}
+                      <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[#2F6B3D]/76">
+                        {buildTeaser(item.summary, 118)}
                       </p>
 
                       <div className="mt-4 flex flex-wrap gap-2">
@@ -478,10 +495,10 @@ export default function InfoCenterView({
                 </div>
 
                 <p className="mt-5 text-base font-black leading-relaxed text-[#17381C]">
-                  {selectedItem.summary}
+                  {buildTeaser(selectedItem.summary, 160)}
                 </p>
-                <p className="mt-4 text-sm leading-relaxed text-[#2F6B3D]/82">
-                  {selectedItem.content}
+                <p className="mt-3 text-sm leading-relaxed text-[#2F6B3D]/72">
+                  {copy.sourceFirst}
                 </p>
               </div>
 

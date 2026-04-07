@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated Capacitor/iOS web bundle artifacts should not be linted.
+    "ios/**",
+    "android/**",
+    "public/_next/**",
   ]),
 ]);
 

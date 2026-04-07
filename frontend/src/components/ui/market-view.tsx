@@ -39,6 +39,19 @@ type Listing = {
   currency: string;
   availableFrom: string;
   location: string;
+  imageUrl?: string | null;
+  deliveryAvailable?: boolean;
+  deliveryNotes?: string | null;
+  freshnessDays?: number | null;
+  storageLifeDays?: number | null;
+  storageConditions?: string | null;
+  recommendedRegion?: string | null;
+  saleModel?: string;
+  sellerTrust?: {
+    score: number;
+    dealsCount: number;
+    reliability: "new" | "stable" | "trusted";
+  };
   farmer?: {
     id?: string;
     fullName?: string;
@@ -56,13 +69,26 @@ type Listing = {
 
 type ChatListItem = {
   id: string;
+  type: string;
+  title: string;
   listingId: string | null;
+  participantCount: number;
   participants: Array<{
     userId: string;
     fullName: string;
     role: string | null;
     region: string | null;
   }>;
+  channel: {
+    key: string;
+    label: string;
+    scope: string;
+    region: string | null;
+    district: string | null;
+    village: string | null;
+    cropType: string | null;
+    isModerated: boolean;
+  } | null;
   lastMessage: {
     id: string;
     body: string;
@@ -73,16 +99,30 @@ type ChatListItem = {
 
 type ChatDetail = {
   id: string;
+  type: string;
+  title: string;
   listingId: string | null;
+  participantCount: number;
   participants: Array<{
     userId: string;
     fullName: string;
     role: string | null;
     region: string | null;
   }>;
+  channel: {
+    key: string;
+    label: string;
+    scope: string;
+    region: string | null;
+    district: string | null;
+    village: string | null;
+    cropType: string | null;
+    isModerated: boolean;
+  } | null;
   messages: Array<{
     id: string;
     senderId: string;
+    senderName?: string;
     body: string;
     type: string;
     createdAt: string;
@@ -120,6 +160,31 @@ const listingVisuals = (title: string, category: string) => {
       (key && imageByKey[key]) ||
       "https://images.unsplash.com/photo-1592424005167-9bb29c0b0add?q=80&w=1200&auto=format&fit=crop",
   };
+};
+
+const trustLabel = (
+  reliability: Listing["sellerTrust"] extends infer T
+    ? T extends { reliability: infer R }
+      ? R
+      : never
+    : never,
+  language: PlatformLanguage,
+) => {
+  if (reliability === "trusted") {
+    return language === "kk" ? "Сенімді" : "Надежный";
+  }
+  if (reliability === "stable") {
+    return language === "kk" ? "Тұрақты" : "Стабильный";
+  }
+  return language === "kk" ? "Жаңа" : "Новый";
+};
+
+const listingImage = (item: Listing) => {
+  if (item.imageUrl) {
+    return item.imageUrl;
+  }
+
+  return listingVisuals(item.title, item.category).image;
 };
 
 export default function MarketView({
@@ -178,6 +243,12 @@ export default function MarketView({
           quantity: "Көлем",
           currency: "Валюта",
           dealMode: "Келісім режимі",
+          freshness: "Балғындық",
+          storage: "Сақтау",
+          delivery: "Жеткізу",
+          trust: "Сенім",
+          regionAdvice: "Ұсынылатын өңір",
+          deals: "Мәміле",
           direct: "Тікелей келіссөз ашу",
           chats: "Чаттар",
           openChats: "Чаттарды ашу",
@@ -236,6 +307,12 @@ export default function MarketView({
           quantity: "Объем",
           currency: "Валюта",
           dealMode: "Режим сделки",
+          freshness: "Свежесть",
+          storage: "Хранение",
+          delivery: "Доставка",
+          trust: "Доверие",
+          regionAdvice: "Регион рекомендации",
+          deals: "Сделок",
           direct: "Открыть прямые переговоры",
           chats: "Чаты",
           openChats: "Открыть чаты",
@@ -266,6 +343,20 @@ export default function MarketView({
           grains: "Зерновые",
           other: "Прочее",
         };
+  const communityQuickReplies =
+    language === "kk"
+      ? [
+          "Жақын жерде кім сатып алып жатыр?",
+          "Логистика бар ма?",
+          "Бүгін қандай баға жүріп тұр?",
+          "Осы өңірде кімге тапсыруға болады?",
+        ]
+      : [
+          "Кто сейчас покупает рядом?",
+          "Есть ли доставка по району?",
+          "Какая цена сейчас по региону?",
+          "Кому можно продать локально?",
+        ];
 
   const fetchChats = async (preferredChatId?: string) => {
     const token = localStorage.getItem("agro_token");
@@ -461,6 +552,18 @@ export default function MarketView({
       fetchChats();
     }
   }, [isChatOpen]);
+
+  useEffect(() => {
+    if (!isChatOpen) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      fetchChats(activeChat?.id);
+    }, 12000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isChatOpen, activeChat?.id]);
 
   const toggleSort = () => {
     if (sortBy === "createdAt") {
@@ -687,7 +790,7 @@ export default function MarketView({
                     >
                       <div className="relative h-56">
                         <img
-                          src={visual.image}
+                          src={listingImage(item) || visual.image}
                           alt={item.title}
                           className="h-full w-full object-cover"
                         />
@@ -752,6 +855,31 @@ export default function MarketView({
                           </div>
                         </div>
 
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-[1.2rem] bg-[#F5F1E8] px-4 py-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                              {marketCopy.freshness}
+                            </p>
+                            <p className="mt-1 text-base font-black text-[#17381C]">
+                              {item.freshnessDays ? `${item.freshnessDays} дн` : "n/a"}
+                            </p>
+                          </div>
+                          <div className="rounded-[1.2rem] bg-[#F5F1E8] px-4 py-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                              {marketCopy.delivery}
+                            </p>
+                            <p className="mt-1 text-base font-black text-[#17381C]">
+                              {item.deliveryAvailable
+                                ? language === "kk"
+                                  ? "Бар"
+                                  : "Есть"
+                                : language === "kk"
+                                  ? "Жоқ"
+                                  : "Нет"}
+                            </p>
+                          </div>
+                        </div>
+
                         <div className="space-y-2 text-sm text-[#2F6B3D]/72">
                           {marketMode === "mine" && (item.recommendationMessage || item.visibilityReason) && (
                             <div className="rounded-[1.2rem] bg-[#F5F1E8] px-4 py-3 text-sm leading-relaxed text-[#2F6B3D]/72">
@@ -783,6 +911,25 @@ export default function MarketView({
                             <CalendarDays className="size-4 text-[#D9B44A]" />
                             <span className="font-semibold">{item.availableFrom}</span>
                           </div>
+                          {item.recommendedRegion ? (
+                            <div className="flex items-center gap-2">
+                              <Sparkles className="size-4 text-[#D9B44A]" />
+                              <span className="font-semibold">
+                                {marketCopy.regionAdvice}: {item.recommendedRegion}
+                              </span>
+                            </div>
+                          ) : null}
+                          {item.sellerTrust ? (
+                            <div className="rounded-[1.2rem] bg-[#F5F1E8] px-4 py-3">
+                              <p className="font-black text-[#17381C]">
+                                {marketCopy.trust}: {item.sellerTrust.score.toFixed(1)} •{" "}
+                                {trustLabel(item.sellerTrust.reliability, language)}
+                              </p>
+                              <p className="mt-1 text-xs">
+                                {marketCopy.deals}: {item.sellerTrust.dealsCount}
+                              </p>
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="flex items-center justify-between rounded-[1.4rem] bg-[#17381C] px-4 py-3 text-white">
@@ -832,7 +979,10 @@ export default function MarketView({
           <Card className="w-full max-w-lg rounded-[2rem] border-none bg-[#F4EFE6] p-0 shadow-[0_30px_100px_rgba(13,30,17,0.3)]">
             <div className="relative h-64">
               <img
-                src={listingVisuals(selectedListing.title, selectedListing.category).image}
+                src={
+                  selectedListing.imageUrl ||
+                  listingVisuals(selectedListing.title, selectedListing.category).image
+                }
                 alt={selectedListing.title}
                 className="h-full w-full rounded-t-[2rem] object-cover"
               />
@@ -872,6 +1022,67 @@ export default function MarketView({
                   </p>
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-[1.2rem] bg-white px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {marketCopy.freshness}
+                  </p>
+                  <p className="mt-1 text-base font-black text-[#17381C]">
+                    {selectedListing.freshnessDays
+                      ? `${selectedListing.freshnessDays} дн`
+                      : "n/a"}
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] bg-white px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {marketCopy.storage}
+                  </p>
+                  <p className="mt-1 text-base font-black text-[#17381C]">
+                    {selectedListing.storageLifeDays
+                      ? `${selectedListing.storageLifeDays} дн`
+                      : "n/a"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-[1.2rem] bg-white px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {marketCopy.storage}
+                </p>
+                <p className="mt-2 text-sm text-[#2F6B3D]/72">
+                  {selectedListing.storageConditions || "n/a"}
+                </p>
+              </div>
+
+              <div className="rounded-[1.2rem] bg-white px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {marketCopy.delivery}
+                </p>
+                <p className="mt-2 text-sm text-[#2F6B3D]/72">
+                  {selectedListing.deliveryAvailable
+                    ? selectedListing.deliveryNotes ||
+                      (language === "kk" ? "Жеткізу бар" : "Доставка доступна")
+                    : language === "kk"
+                      ? "Жеткізу жоқ"
+                      : "Доставка не указана"}
+                </p>
+              </div>
+
+              {selectedListing.sellerTrust ? (
+                <div className="rounded-[1.2rem] bg-white px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                    {marketCopy.trust}
+                  </p>
+                  <p className="mt-2 text-sm font-black text-[#17381C]">
+                    {selectedListing.sellerTrust.score.toFixed(1)} •{" "}
+                    {trustLabel(selectedListing.sellerTrust.reliability, language)}
+                  </p>
+                  <p className="mt-1 text-sm text-[#2F6B3D]/72">
+                    {marketCopy.deals}: {selectedListing.sellerTrust.dealsCount}
+                  </p>
+                </div>
+              ) : null}
 
               <div className="space-y-2 rounded-[1.4rem] bg-white px-4 py-4 text-sm text-[#2F6B3D]/78">
                 <div className="flex items-center gap-2">
@@ -927,11 +1138,11 @@ export default function MarketView({
       )}
 
       {isChatOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm sm:items-center">
-          <Card className="flex h-[90vh] w-full max-w-5xl overflow-hidden rounded-[2rem] border-none bg-[#F4EFE6] p-0 shadow-[0_30px_100px_rgba(13,30,17,0.3)]">
-            <div className="flex w-full flex-col md:flex-row">
-              <div className="w-full border-b border-black/5 bg-white/75 md:w-[20rem] md:border-b-0 md:border-r">
-                <div className="flex items-center justify-between px-5 py-4">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-2 backdrop-blur-sm sm:p-3 sm:items-center">
+          <Card className="flex h-[calc(100dvh-1rem)] w-full max-w-[32rem] overflow-hidden rounded-[2rem] border-none bg-[#F4EFE6] p-0 shadow-[0_30px_100px_rgba(13,30,17,0.3)] sm:h-[90vh] md:max-w-5xl">
+            <div className="flex w-full min-w-0 flex-col md:flex-row">
+              <div className="w-full shrink-0 border-b border-black/5 bg-white/75 md:w-[20rem] md:border-b-0 md:border-r">
+                <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#2F6B3D]/45">
                       {marketCopy.chats}
@@ -949,7 +1160,7 @@ export default function MarketView({
                   </button>
                 </div>
 
-                <div className="max-h-[28vh] overflow-y-auto px-3 pb-3 md:max-h-[calc(90vh-5rem)]">
+                <div className="max-h-[31vh] overflow-y-auto px-2 pb-3 sm:px-3 md:max-h-[calc(90vh-5rem)]">
                   {isChatsLoading ? (
                     <div className="px-3 py-6 text-sm text-[#2F6B3D]/60">
                       Loading...
@@ -957,20 +1168,39 @@ export default function MarketView({
                   ) : chats.length > 0 ? (
                     <div className="space-y-2">
                       {chats.map((chat) => {
-                        const title =
-                          chat.participants[0]?.fullName || marketCopy.seller;
+                        const isCommunity = Boolean(chat.channel);
                         return (
                           <button
                             key={chat.id}
                             type="button"
                             onClick={() => openChat(chat.id)}
-                            className={`w-full rounded-[1.2rem] px-3 py-3 text-left transition-colors ${
+                            className={`w-full min-w-0 rounded-[1.2rem] px-3 py-3 text-left transition-colors ${
                               activeChat?.id === chat.id
                                 ? "bg-[#17381C] text-white"
                                 : "bg-white text-[#17381C] hover:bg-[#F5F1E8]"
                             }`}
                           >
-                            <p className="text-sm font-black">{title}</p>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="min-w-0 flex-1 truncate pr-2 text-sm font-black">
+                                {chat.title}
+                              </p>
+                              <div
+                                aria-label={isCommunity ? "channel" : "chat"}
+                                className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
+                                  activeChat?.id === chat.id
+                                    ? "bg-white/10 text-white/72"
+                                    : "bg-[#F5F1E8] text-[#2F6B3D]/65"
+                                }`}
+                              >
+                                {isCommunity
+                                  ? language === "kk"
+                                    ? "Арна"
+                                    : "Канал"
+                                  : language === "kk"
+                                    ? "Чат"
+                                    : "Чат"}
+                              </div>
+                            </div>
                             <p
                               className={`mt-1 line-clamp-2 text-xs ${
                                 activeChat?.id === chat.id
@@ -978,7 +1208,12 @@ export default function MarketView({
                                   : "text-[#2F6B3D]/62"
                               }`}
                             >
-                              {chat.lastMessage?.body || marketCopy.noMessages}
+                              {chat.lastMessage?.body ||
+                                (isCommunity
+                                  ? language === "kk"
+                                    ? "Қауым арнасы дайын"
+                                    : "Канал сообщества готов"
+                                  : marketCopy.noMessages)}
                             </p>
                           </button>
                         );
@@ -995,23 +1230,33 @@ export default function MarketView({
                 </div>
               </div>
 
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="flex items-center justify-between border-b border-black/5 bg-white/60 px-5 py-4">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="flex items-center justify-between gap-3 border-b border-black/5 bg-white/60 px-4 py-4 sm:px-5">
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#2F6B3D]/45">
-                      {marketCopy.chatWith}
+                      {activeChat?.channel
+                        ? language === "kk"
+                          ? "Қауым арнасы"
+                          : "Канал сообщества"
+                        : marketCopy.chatWith}
                     </p>
                     <h3 className="truncate text-lg font-black text-[#17381C]">
-                      {activeChat?.participants.find(
-                        (participant) => participant.userId !== currentUserId,
-                      )?.fullName ||
+                      {activeChat?.title ||
+                        activeChat?.participants.find(
+                          (participant) => participant.userId !== currentUserId,
+                        )?.fullName ||
                         activeChat?.participants[0]?.fullName ||
                         marketCopy.seller}
                     </h3>
                   </div>
+                  {activeChat?.channel?.isModerated ? (
+                    <div className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]/65">
+                      {language === "kk" ? "Модерация" : "Модерация"}
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4">
                   {activeChat?.messages?.length ? (
                     <div className="space-y-3">
                       {activeChat.messages.map((message) => (
@@ -1024,6 +1269,12 @@ export default function MarketView({
                           }`}
                         >
                           <div className="max-w-[85%] rounded-[1.2rem] bg-white px-4 py-3 text-sm text-[#17381C] shadow-sm">
+                            {activeChat?.channel &&
+                            message.senderId !== currentUserId ? (
+                              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]/45">
+                                {message.senderName || "User"}
+                              </p>
+                            ) : null}
                             {message.body}
                           </div>
                         </div>
@@ -1040,20 +1291,30 @@ export default function MarketView({
 
                 {activeChat && (
                   <>
-                    <div className="flex flex-wrap gap-2 border-t border-black/5 px-4 pt-4">
-                      {[marketCopy.quickAvailability, marketCopy.quickQuantity, marketCopy.quickDelivery, marketCopy.quickLocation].map((quickMessage) => (
-                        <button
-                          key={quickMessage}
-                          type="button"
-                          onClick={() => sendMessage(quickMessage)}
-                          className="rounded-full bg-white px-3 py-2 text-xs font-black text-[#17381C] shadow-sm transition-colors hover:bg-[#F5F1E8]"
-                        >
-                          {quickMessage}
-                        </button>
-                      ))}
+                    <div className="border-t border-black/5 px-3 pt-4 sm:px-4">
+                      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {(activeChat.channel
+                          ? communityQuickReplies
+                          : [
+                              marketCopy.quickAvailability,
+                              marketCopy.quickQuantity,
+                              marketCopy.quickDelivery,
+                              marketCopy.quickLocation,
+                            ]
+                        ).map((quickMessage) => (
+                          <button
+                            key={quickMessage}
+                            type="button"
+                            onClick={() => sendMessage(quickMessage)}
+                            className="shrink-0 rounded-full bg-white px-3 py-2 text-xs font-black text-[#17381C] shadow-sm transition-colors hover:bg-[#F5F1E8]"
+                          >
+                            {quickMessage}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="border-t border-black/5 px-4 py-4">
-                      <div className="flex items-center gap-3">
+                    <div className="border-t border-black/5 px-3 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:px-4 sm:pb-4">
+                      <div className="flex items-center gap-2 sm:gap-3">
                         <input
                           type="text"
                           value={chatMessage}
@@ -1065,12 +1326,12 @@ export default function MarketView({
                             }
                           }}
                           placeholder={marketCopy.messagePlaceholder}
-                          className="h-13 flex-1 rounded-full border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                          className="h-13 min-w-0 flex-1 rounded-full border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
                         />
                         <Button
                           onClick={() => sendMessage(chatMessage)}
                           disabled={isSendingMessage || !chatMessage.trim()}
-                          className="h-13 rounded-full bg-[#17381C] px-4 font-black text-white hover:bg-[#214a28]"
+                          className="h-13 shrink-0 rounded-full bg-[#17381C] px-4 font-black text-white hover:bg-[#214a28]"
                         >
                           <Send className="size-4" />
                         </Button>

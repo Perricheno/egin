@@ -38,6 +38,54 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
     }
   };
 
+  const getPlotsSummary = (count: number) => {
+    if (language === "kk") {
+      return `${count} белсенді аумақ`;
+    }
+
+    const lastTwoDigits = count % 100;
+    const lastDigit = count % 10;
+
+    if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+      return `${count} активных участков`;
+    }
+
+    if (lastDigit === 1) {
+      return `${count} активный участок`;
+    }
+
+    if (lastDigit >= 2 && lastDigit <= 4) {
+      return `${count} активных участка`;
+    }
+
+    return `${count} активных участков`;
+  };
+
+  const getCompletedDealsSummary = (count: number) => {
+    if (language === "kk") {
+      return `${count} аяқталған мәміле`;
+    }
+
+    const lastTwoDigits = count % 100;
+    const lastDigit = count % 10;
+
+    if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+      return `${count} завершенных сделок`;
+    }
+
+    if (lastDigit === 1) {
+      return `${count} завершенная сделка`;
+    }
+
+    if (lastDigit >= 2 && lastDigit <= 4) {
+      return `${count} завершенные сделки`;
+    }
+
+    return `${count} завершенных сделок`;
+  };
+
+  const completedDealsCount = orders.filter((order: any) => order.status === "completed").length;
+
   useEffect(() => {
     const token = localStorage.getItem("agro_token");
     if (token) {
@@ -51,6 +99,8 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
       setProfile({ name, phone, role, region, district });
       if (savedAvatar) setAvatar(savedAvatar);
       fetchProfile(token);
+      fetchPlots(token);
+      fetchOrders(token);
     }
   }, []);
 
@@ -76,11 +126,11 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
     } catch {}
   };
 
-  const fetchPlots = async () => {
+  const fetchPlots = async (providedToken?: string) => {
     setLoadingPlots(true);
     try {
-      const token = localStorage.getItem("agro_token");
-      const res = await fetch(apiUrl("/farm-plots"), {
+      const token = providedToken || localStorage.getItem("agro_token");
+      const res = await fetch(apiUrl("/farm-plots/mine"), {
         headers: { "Authorization": `Bearer ${token}` },
       });
       const json = await res.json();
@@ -88,10 +138,10 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
     } catch {} finally { setLoadingPlots(false); }
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (providedToken?: string) => {
     setLoadingOrders(true);
     try {
-      const token = localStorage.getItem("agro_token");
+      const token = providedToken || localStorage.getItem("agro_token");
       const res = await fetch(apiUrl("/orders/my"), {
         headers: { "Authorization": `Bearer ${token}` },
       });
@@ -372,7 +422,7 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
               <div className="p-4 bg-blue-50/50 text-blue-600 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-colors"><MapIcon className="size-6" /></div>
               <div className="flex flex-col">
                 <span className="font-black text-[#2F6B3D] text-lg leading-tight uppercase tracking-tight">{t.myPlots}</span>
-                <span className="text-[10px] font-bold text-[#2F6B3D]/40 uppercase">{t.activeTerritory}</span>
+                <span className="text-[10px] font-bold text-[#2F6B3D]/40 uppercase">{getPlotsSummary(plots.length)}</span>
               </div>
             </div>
             <ChevronRight className="size-6 text-[#2F6B3D]/20 group-hover:text-[#2F6B3D] transition-colors" />
@@ -387,7 +437,7 @@ export default function ProfileView({ language }: { language: PlatformLanguage }
               </div>
               <div className="flex flex-col">
                 <span className="font-black text-[#2F6B3D] text-lg leading-tight uppercase tracking-tight">{t.dealsHistory}</span>
-                <span className="text-[10px] font-bold text-[#2F6B3D]/40 uppercase text-amber-600/60">{t.completedDeals}</span>
+                <span className="text-[10px] font-bold text-[#2F6B3D]/40 uppercase text-amber-600/60">{getCompletedDealsSummary(completedDealsCount)}</span>
               </div>
             </div>
             <ChevronRight className="size-6 text-[#2F6B3D]/20 group-hover:text-[#2F6B3D] transition-colors" />

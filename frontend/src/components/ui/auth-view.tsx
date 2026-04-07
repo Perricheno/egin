@@ -40,6 +40,10 @@ export default function AuthView({ onSuccess, language }: AuthViewProps) {
     return "+" + clean;
   };
 
+  const isValidKazakhstanPhone = (phone: string) => {
+    return /^\+7\d{10}$/.test(phone);
+  };
+
   const checkHealth = async () => {
     try {
       const res = await fetch(apiUrl("/"));
@@ -65,6 +69,12 @@ export default function AuthView({ onSuccess, language }: AuthViewProps) {
     setLoading(true);
     setErrorMsg(null);
     const phone = normalizePhone(formData.phone);
+
+    if (!isValidKazakhstanPhone(phone)) {
+      setLoading(false);
+      setErrorMsg(t.invalidPhoneFormat);
+      return;
+    }
     
     let payload: any;
     let endpoint: string;
@@ -109,8 +119,7 @@ export default function AuthView({ onSuccess, language }: AuthViewProps) {
         }
       } else {
         if (res.status === 401 && isLogin) {
-          setErrorMsg(t.userNotFound);
-          setIsLogin(false);
+          setErrorMsg(t.invalidCredentials);
         } 
         else if (res.status === 409 && !isLogin) {
           setErrorMsg(t.alreadyRegistered);

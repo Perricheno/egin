@@ -12,7 +12,10 @@ export default function AdminView() {
 
   const fetchPlots = async () => {
     try {
-      const res = await fetch(apiUrl('/farm-plots'));
+      const token = localStorage.getItem("agro_token");
+      const res = await fetch(apiUrl('/farm-plots'), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const json = await res.json();
       if (json.success) setPlots(json.data);
     } catch (e) {

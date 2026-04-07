@@ -36,6 +36,14 @@ export default function CreateListingModal({
     location: language === "kk" ? "Алматы обл." : "Алматинская обл.",
     availableFrom: new Date().toISOString().split("T")[0],
     description: "",
+    imageUrl: "",
+    freshnessDays: "",
+    storageLifeDays: "",
+    storageConditions: "",
+    deliveryAvailable: false,
+    deliveryNotes: "",
+    recommendedRegion: language === "kk" ? "Алматы облысы" : "Алматинская область",
+    saleModel: "lead_chat",
   });
   const copy =
     language === "kk"
@@ -59,6 +67,16 @@ export default function CreateListingModal({
           location: "Орналасу",
           available: "Қай күннен",
           description: "Сипаттама",
+          image: "Фото URL",
+          freshness: "Балғындық күні",
+          storageLife: "Сақтау күні",
+          storageConditions: "Сақтау шарты",
+          delivery: "Жеткізу",
+          deliveryNotes: "Жеткізу шарты",
+          recommendedRegion: "Ұсынылатын өңір",
+          saleModel: "Сату моделі",
+          yes: "Иә",
+          no: "Жоқ",
           publishing: "Жариялануда...",
           publish: "Жариялау",
           vegetables: "Көкөніс",
@@ -68,6 +86,9 @@ export default function CreateListingModal({
           titlePlaceholder: "Мысалы: Іріктелген картоп",
           locationPlaceholder: "Алматы обл, Талғар",
           descriptionPlaceholder: "Сапа, сақтау және жеткізу туралы қосымша мәлімет...",
+          imagePlaceholder: "https://...",
+          storagePlaceholder: "Көлеңкеде және салқын жерде сақтау",
+          deliveryPlaceholder: "Қай аймаққа және қанша уақытта жеткізесіз",
         }
       : {
           needLogin: "Пожалуйста, войдите в систему",
@@ -89,6 +110,16 @@ export default function CreateListingModal({
           location: "Локация",
           available: "Доступно с",
           description: "Описание",
+          image: "Фото URL",
+          freshness: "Свежесть, дней",
+          storageLife: "Срок хранения, дней",
+          storageConditions: "Условия хранения",
+          delivery: "Доставка",
+          deliveryNotes: "Условия доставки",
+          recommendedRegion: "Регион рекомендации",
+          saleModel: "Модель продажи",
+          yes: "Да",
+          no: "Нет",
           publishing: "Публикуем...",
           publish: "Опубликовать",
           vegetables: "Овощи",
@@ -98,6 +129,9 @@ export default function CreateListingModal({
           titlePlaceholder: "Например: Отборный картофель",
           locationPlaceholder: "Алматинская обл, Талгар",
           descriptionPlaceholder: "Дополнительные детали по качеству, хранению и логистике...",
+          imagePlaceholder: "https://...",
+          storagePlaceholder: "Хранить в тени и прохладе",
+          deliveryPlaceholder: "Куда и за сколько доставляете",
         };
 
   if (!isOpen) return null;
@@ -105,7 +139,12 @@ export default function CreateListingModal({
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const target = e.target;
+    const value =
+      target instanceof HTMLInputElement && target.type === "checkbox"
+        ? target.checked
+        : target.value;
+    setFormData((prev) => ({ ...prev, [target.name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -129,6 +168,12 @@ export default function CreateListingModal({
           ...formData,
           quantity: Number(formData.quantity),
           price: Number(formData.price),
+          freshnessDays: formData.freshnessDays
+            ? Number(formData.freshnessDays)
+            : undefined,
+          storageLifeDays: formData.storageLifeDays
+            ? Number(formData.storageLifeDays)
+            : undefined,
         }),
       });
 
@@ -361,6 +406,127 @@ export default function CreateListingModal({
                 onChange={handleChange}
                 className="w-full resize-none rounded-[1.4rem] border-none bg-white p-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
                 placeholder={copy.descriptionPlaceholder}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                {copy.image}
+              </label>
+              <input
+                name="imageUrl"
+                value={formData.imageUrl}
+                onChange={handleChange}
+                className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                placeholder={copy.imagePlaceholder}
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {copy.freshness}
+                </label>
+                <input
+                  name="freshnessDays"
+                  type="number"
+                  min="0"
+                  value={formData.freshnessDays}
+                  onChange={handleChange}
+                  className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                  placeholder="3"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {copy.storageLife}
+                </label>
+                <input
+                  name="storageLifeDays"
+                  type="number"
+                  min="0"
+                  value={formData.storageLifeDays}
+                  onChange={handleChange}
+                  className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                  placeholder="14"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                {copy.storageConditions}
+              </label>
+              <textarea
+                name="storageConditions"
+                rows={3}
+                value={formData.storageConditions}
+                onChange={handleChange}
+                className="w-full resize-none rounded-[1.4rem] border-none bg-white p-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                placeholder={copy.storagePlaceholder}
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {copy.delivery}
+                </label>
+                <select
+                  name="deliveryAvailable"
+                  value={formData.deliveryAvailable ? "true" : "false"}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      deliveryAvailable: e.target.value === "true",
+                    }))
+                  }
+                  className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                >
+                  <option value="false">{copy.no}</option>
+                  <option value="true">{copy.yes}</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                  {copy.saleModel}
+                </label>
+                <select
+                  name="saleModel"
+                  value={formData.saleModel}
+                  onChange={handleChange}
+                  className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                >
+                  <option value="lead_chat">Lead chat</option>
+                  <option value="local_direct">Local direct</option>
+                  <option value="bulk_offer">Bulk offer</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                {copy.deliveryNotes}
+              </label>
+              <input
+                name="deliveryNotes"
+                value={formData.deliveryNotes}
+                onChange={handleChange}
+                className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                placeholder={copy.deliveryPlaceholder}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="ml-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#2F6B3D]/45">
+                {copy.recommendedRegion}
+              </label>
+              <input
+                name="recommendedRegion"
+                value={formData.recommendedRegion}
+                onChange={handleChange}
+                className="h-14 w-full rounded-[1.4rem] border-none bg-white px-4 text-sm font-semibold text-[#17381C] shadow-sm outline-none"
+                placeholder={copy.locationPlaceholder}
               />
             </div>
           </form>

@@ -38,6 +38,10 @@ type ServiceItem = {
   priceFrom: number;
   currency: string;
   urgentAvailable: boolean;
+  availability: string;
+  serviceArea: string | null;
+  responseSlaHours: number;
+  isActive?: boolean;
   country: string;
   region: string;
   district: string;
@@ -51,6 +55,12 @@ type ServiceItem = {
     fullName: string;
     region: string;
     district: string;
+    stats?: {
+      activeServices: number;
+      totalReviews: number;
+      totalCompletedJobs: number;
+      averageRating: number;
+    };
   };
 };
 
@@ -93,6 +103,9 @@ export default function ServicesView({
           district: "Аудан",
           priceFrom: "Баға",
           urgentAvailable: "Шұғыл шығады",
+          availability: "Қолжетімділік",
+          serviceArea: "Қызмет аймағы",
+          sla: "Жауап SLA",
           completed: "Жұмыс",
           reviews: "Пікір",
           provider: "Орындаушы",
@@ -117,6 +130,9 @@ export default function ServicesView({
           district: "Район",
           priceFrom: "Цена",
           urgentAvailable: "Срочный выезд",
+          availability: "Доступность",
+          serviceArea: "Зона работы",
+          sla: "SLA ответа",
           completed: "Сделок",
           reviews: "Отзывов",
           provider: "Исполнитель",
@@ -398,6 +414,9 @@ export default function ServicesView({
                       {service.region}
                     </div>
                     <div className="rounded-full bg-[#F5F8F1] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]">
+                      {copy.sla}: {service.responseSlaHours}ч
+                    </div>
+                    <div className="rounded-full bg-[#F5F8F1] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]">
                       <Star className="mr-1 inline size-3.5" />
                       {service.rating.toFixed(1)}
                     </div>
@@ -477,6 +496,9 @@ export default function ServicesView({
                     <MapPin className="mr-1 inline size-3.5" />
                     {selectedService.region}, {selectedService.district}
                   </div>
+                  <div className="rounded-full bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]">
+                    {copy.sla}: {selectedService.responseSlaHours}ч
+                  </div>
                 </div>
 
                 <p className="mt-5 text-base font-black leading-relaxed text-[#17381C]">
@@ -522,6 +544,23 @@ export default function ServicesView({
                           : "Нет"}
                     </p>
                   </div>
+                  <div className="rounded-[1.4rem] bg-white px-4 py-4 shadow-sm">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/45">
+                      {copy.availability}
+                    </p>
+                    <p className="mt-2 text-base font-black text-[#17381C]">
+                      {selectedService.availability}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-[1.4rem] bg-white px-4 py-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/45">
+                    {copy.serviceArea}
+                  </p>
+                  <p className="mt-2 text-sm font-medium leading-relaxed text-[#17381C]">
+                    {selectedService.serviceArea || `${selectedService.region}, ${selectedService.district}`}
+                  </p>
                 </div>
               </div>
 

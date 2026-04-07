@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend
 
-## Getting Started
+AgriPlan frontend on `Next.js 16 + React 19 + Tailwind 4` with a mobile web-first UI and Capacitor wrapper for iOS.
 
-First, run the development server:
+## Run
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Default local URL:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3001
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+API base URL is configured via `NEXT_PUBLIC_API_BASE_URL`. If it is not set, the app falls back to:
 
-## Learn More
+```text
+http://localhost:3008
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Product Scope
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Current product areas in the web shell:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- authentication by phone and password
+- dashboard with weather, notifications and crop cards
+- farm plot map with polygon save/edit flow
+- marketplace with lead-based selling flow
+- services catalog and provider-facing flows
+- direct chat and regional channel groundwork
+- info center
+- profile and orders
+- admin surface
+- Capacitor iOS shell
 
-## Deploy on Vercel
+## Build And Checks
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run build
+npm run lint
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Capacitor
+
+```bash
+npm run cap:sync
+npm run cap:open:ios
+```
+
+`ios/` contains generated native wrapper artifacts and should be treated as build output unless native changes are intentional.

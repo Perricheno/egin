@@ -227,7 +227,14 @@ const Map = forwardRef<MapRef, MapProps>(
 
     const fetchPlots = async (map: maplibregl.Map) => {
       try {
-        const response = await fetch(apiUrl("/farm-plots"));
+        const token = localStorage.getItem("agro_token");
+        if (!token) return;
+
+        const response = await fetch(apiUrl("/farm-plots"), {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
         if (!response.ok) return;
         const json = await response.json();
         if (!json.success) return;
