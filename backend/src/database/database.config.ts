@@ -26,16 +26,28 @@ export const DATABASE_ENTITIES = [
 
 export const buildDatabaseOptions = (
   env: NodeJS.ProcessEnv = process.env,
-): TypeOrmModuleOptions & DataSourceOptions => ({
-  type: 'postgres',
-  host: env.DB_HOST || 'localhost',
-  port: parseEnvNumber(env.DB_PORT, 5432),
-  username: env.DB_USERNAME || 'postgres',
-  password: env.DB_PASSWORD || 'postgres',
-  database: env.DB_NAME || 'agro_platform_db',
-  entities: DATABASE_ENTITIES,
-  migrations: [__dirname + '/migrations/*{.ts,.js}'],
-  synchronize: parseEnvBoolean(env.DB_SYNCHRONIZE, false),
-  migrationsRun: parseEnvBoolean(env.DB_MIGRATIONS_RUN, false),
-  logging: parseEnvBoolean(env.DB_LOGGING, false),
-});
+): TypeOrmModuleOptions & DataSourceOptions => {
+  const isSslEnabled = parseEnvBoolean(env.DB_SSL, env.APP_ENV === 'production');
+
+  const baseConfig: any = {
+    type: 'postgres',
+    entities: DATABASE_ENTITIES,
+    migrations: [__dirname + '/migrations/*{.ts,.js}'],
+    synchronize: parseEnvBoolean(env.DB_SYNCHRONIZE, false),
+    migrationsRun: parseEnvBoolean(env.DB_MIGRATIONS_RUN, false),
+    logging: parseEnvBoolean(env.DB_LOGGING, false),
+    ssl: isSslEnabled ? { rejectUnauthorized: false } : false,
+  };
+
+  if (env.DATABASE_URL) {
+    baseConfig.url = env.DATABASE_URL;
+  } else {
+    baseConfig.host = env.DB_HOST || 'localhost';
+    baseConfig.port = parseEnvNumber(env.DB_PORT, 5432);
+    baseConfig.username = env.DB_USERNAME || 'postgres';
+    baseConfig.password = env.DB_PASSWORD || 'postgres';
+    baseConfig.database = env.DB_NAME || 'agro_platform_db';
+  }
+
+  return baseConfig;
+};

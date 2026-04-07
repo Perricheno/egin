@@ -1,6 +1,9 @@
+import * as dotenv from 'dotenv';
 import { DataSource } from 'typeorm';
 import { buildDatabaseOptions } from './database.config';
 
-export const AppDataSource = new DataSource(buildDatabaseOptions(process.env));
+dotenv.config();
+
+const AppDataSource = new DataSource(buildDatabaseOptions(process.env));
 
 export default AppDataSource;

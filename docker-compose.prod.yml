@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/agriplan-backend:latest
+    container_name: agriplan-backend
+    restart: always
+    ports:
+      - "3378:3008"
+    env_file:
+      - .env
+    networks:
+      - agriplan-network
+    depends_on:
+      - frontend
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/agriplan-frontend:latest
+    container_name: agriplan-frontend
+    restart: always
+    ports:
+      - "3375:3001"
+    env_file:
+      - .env
+    networks:
+      - agriplan-network
+
+networks:
+  agriplan-network:
+    driver: bridge
