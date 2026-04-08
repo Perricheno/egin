@@ -105,7 +105,7 @@
                       ┌──────────────┐  │  - Realtime  │
                       │ agriplan-db  │◄─│  - Kong API  │
                       │ (PostgreSQL) │  │  - Studio    │
-                      │  Port: 5432  │  └──────────────┘
+                      │  Port: 5435  │  └──────────────┘
                       └──────────────┘
 ```
 
@@ -353,7 +353,7 @@ DB_NAME=agro_platform_db
 
 **Вариант 2: DATABASE_URL** (для продакшна / Supabase)
 ```env
-DATABASE_URL=postgres://postgres:password@agriplan-db:5432/postgres
+DATABASE_URL=postgres://postgres:password@agriplan-db:5435/postgres
 ```
 
 Если задан `DATABASE_URL`, он имеет приоритет над отдельными параметрами.
