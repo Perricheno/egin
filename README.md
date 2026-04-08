@@ -443,6 +443,34 @@ npm run migration:revert
 - **Ubuntu** с Docker
 - Все сервисы спрятаны за **Cloudflare Tunnel**
 
+---
+
+## 🛠️ Администрирование и "Ядерная" Починка
+
+Если сайт упал, не видит базу или Studio не открывается, используй эти инструкции.
+
+### 🔗 Основные Ссылки (Production)
+- **Frontend:** [https://egin.perricheno.ru](https://egin.perricheno.ru)
+- **Backend API:** [https://egin-api.perricheno.ru](https://egin-api.perricheno.ru)
+- **Studio (БД):** [https://egin-studio.perricheno.ru](https://egin-studio.perricheno.ru)
+- **Swagger:** [https://egin-api.perricheno.ru/api/docs](https://egin-api.perricheno.ru/api/docs)
+
+### ☣️ Nuclear Fix (Атомарное восстановление)
+Выполни этот блок команд на сервере, если всё сломалось. Он гарантированно поднимет стэк в правильном порядке:
+
+```bash
+# 1. Запуск инфраструктуры (БД, Auth, API Gateway)
+cd /root/agriplan-supabase-stack/docker
+docker compose up -d
+
+# 2. Перезапуск приложения (Backend + Frontend)
+cd ~/agriplan
+docker compose down && docker compose up -d
+
+# 3. Проброс сети (если Backend не видит БД "agriplan-db")
+docker network connect agriplan_default agriplan-db 2>/dev/null || true
+```
+
 ### Компоненты на сервере
 
 ```
@@ -580,6 +608,11 @@ bash install_agriplan_supabase_server.sh
 3. Меняет порты на уникальные (числовые значения: 5435, 3390, 8021 и т.д.)
 4. Устанавливает пароль БД
 5. Запускает весь стек в единой сети `agriplan_default`
+
+### 🔑 Доступы в Supabase Studio
+Интерфейс управления базой доступен по адресу **egin-studio.perricheno.ru**.
+- **User:** `perricheno`
+- **Password:** `perricheno2.7`
 
 > ⚠️ **Важно:** Переменные портов в `.env` Supabase (`POSTGRES_PORT`, `STUDIO_PORT` и т.д.) должны содержать **только число** (например, `5435`), а не `127.0.0.1:5435`. PostgreSQL использует эти значения для внутренней конфигурации параметра `port`, который не принимает IP-адреса. Привязка к localhost делается через секцию `ports:` в `docker-compose.yml`.
 
