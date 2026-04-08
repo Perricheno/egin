@@ -20,7 +20,7 @@ jobs:
             set -e
             
             APP_DIR=~/agriplan
-            REPO_URL="https://github.com/${{ github.repository }}.git"
+            REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
             
             # 1. Клонируем или обновляем код
             if [ -d "$APP_DIR/repo" ]; then
