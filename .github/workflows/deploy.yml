@@ -107,6 +107,10 @@ jobs:
             # Startup the updated containers
             export GITHUB_REPOSITORY_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
             export REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+            
+            # Создаём общую сеть если её ещё нет (Supabase тоже её использует)
+            docker network create agriplan_default 2>/dev/null || true
+            
             docker compose down
             docker compose up -d
             
