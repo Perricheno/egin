@@ -9,7 +9,25 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy & Build on Server
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync code to server
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/agriplan/repo/
+
+      - name: Build & Deploy on Server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -18,59 +36,45 @@ jobs:
           command_timeout: 10m
           script: |
             set -e
-            
+
             APP_DIR=~/agriplan
-            REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-            
-            # 1. Клонируем или обновляем код
-            if [ -d "$APP_DIR/repo" ]; then
-              cd $APP_DIR/repo
-              git fetch --depth 1 origin main
-              git reset --hard origin/main
-            else
-              mkdir -p $APP_DIR
-              git clone --depth 1 --branch main $REPO_URL $APP_DIR/repo
-              cd $APP_DIR/repo
-            fi
-            
-            # 2. Записываем .env
+
+            # 1. Записываем .env
             cat > $APP_DIR/.env << 'ENVEOF'
             ${{ secrets.PROD_ENV_FILE }}
             ENVEOF
-            # Убираем пробелы в начале строк (heredoc indent)
             sed -i 's/^[[:space:]]*//' $APP_DIR/.env
-            
-            # 3. Создаём сеть если нет
+
+            # 2. Создаём сеть если нет
             docker network create agriplan_default 2>/dev/null || true
-            
-            # 4. Собираем оба образа ПАРАЛЛЕЛЬНО прямо на сервере
+
+            # 3. Собираем оба образа ПАРАЛЛЕЛЬНО
             cd $APP_DIR/repo
-            
+
             docker build \
               --build-arg NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}" \
               -t agriplan-frontend:latest \
               -f frontend/Dockerfile \
               ./frontend &
             PID_FRONT=$!
-            
+
             docker build \
               -t agriplan-backend:latest \
               -f backend/Dockerfile \
               ./backend &
             PID_BACK=$!
-            
-            # Ждём завершения обоих билдов
+
             wait $PID_FRONT
             wait $PID_BACK
-            
-            # 5. Копируем docker-compose и запускаем
+
+            # 4. Копируем docker-compose и запускаем
             cp docker-compose.prod.yml $APP_DIR/docker-compose.yml
             cd $APP_DIR
-            
+
             docker compose down
             docker compose up -d
-            
-            # 6. Чистим мусор
+
+            # 5. Чистим мусор
             docker image prune -f
-            
+
             echo "✅ Деплой завершён!"
