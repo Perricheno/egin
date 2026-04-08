@@ -8,70 +8,70 @@ export class MarketplaceLaunchFields1712500002000
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      ADD COLUMN "imageUrl" character varying
+      ADD COLUMN IF NOT EXISTS "imageUrl" character varying
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      ADD COLUMN "deliveryAvailable" boolean NOT NULL DEFAULT false
+      ADD COLUMN IF NOT EXISTS "deliveryAvailable" boolean NOT NULL DEFAULT false
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      ADD COLUMN "deliveryNotes" character varying
+      ADD COLUMN IF NOT EXISTS "deliveryNotes" character varying
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      ADD COLUMN "freshnessDays" integer
+      ADD COLUMN IF NOT EXISTS "freshnessDays" integer
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      ADD COLUMN "storageLifeDays" integer
+      ADD COLUMN IF NOT EXISTS "storageLifeDays" integer
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      ADD COLUMN "storageConditions" text
+      ADD COLUMN IF NOT EXISTS "storageConditions" text
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      ADD COLUMN "recommendedRegion" character varying
+      ADD COLUMN IF NOT EXISTS "recommendedRegion" character varying
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      ADD COLUMN "saleModel" character varying NOT NULL DEFAULT 'lead_chat'
+      ADD COLUMN IF NOT EXISTS "saleModel" character varying NOT NULL DEFAULT 'lead_chat'
     `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      DROP COLUMN "saleModel"
+      DROP COLUMN IF EXISTS "saleModel"
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      DROP COLUMN "recommendedRegion"
+      DROP COLUMN IF EXISTS "recommendedRegion"
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      DROP COLUMN "storageConditions"
+      DROP COLUMN IF EXISTS "storageConditions"
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      DROP COLUMN "storageLifeDays"
+      DROP COLUMN IF EXISTS "storageLifeDays"
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      DROP COLUMN "freshnessDays"
+      DROP COLUMN IF EXISTS "freshnessDays"
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      DROP COLUMN "deliveryNotes"
+      DROP COLUMN IF EXISTS "deliveryNotes"
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      DROP COLUMN "deliveryAvailable"
+      DROP COLUMN IF EXISTS "deliveryAvailable"
     `);
     await queryRunner.query(`
       ALTER TABLE "marketplace_listings"
-      DROP COLUMN "imageUrl"
+      DROP COLUMN IF EXISTS "imageUrl"
     `);
   }
 }

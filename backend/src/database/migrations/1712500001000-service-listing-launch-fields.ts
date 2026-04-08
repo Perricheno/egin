@@ -8,30 +8,30 @@ export class ServiceListingLaunchFields1712500001000
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "service_listings"
-      ADD COLUMN "availability" character varying NOT NULL DEFAULT 'on_request'
+      ADD COLUMN IF NOT EXISTS "availability" character varying NOT NULL DEFAULT 'on_request'
     `);
     await queryRunner.query(`
       ALTER TABLE "service_listings"
-      ADD COLUMN "serviceArea" character varying
+      ADD COLUMN IF NOT EXISTS "serviceArea" character varying
     `);
     await queryRunner.query(`
       ALTER TABLE "service_listings"
-      ADD COLUMN "responseSlaHours" integer NOT NULL DEFAULT 24
+      ADD COLUMN IF NOT EXISTS "responseSlaHours" integer NOT NULL DEFAULT 24
     `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "service_listings"
-      DROP COLUMN "responseSlaHours"
+      DROP COLUMN IF EXISTS "responseSlaHours"
     `);
     await queryRunner.query(`
       ALTER TABLE "service_listings"
-      DROP COLUMN "serviceArea"
+      DROP COLUMN IF EXISTS "serviceArea"
     `);
     await queryRunner.query(`
       ALTER TABLE "service_listings"
-      DROP COLUMN "availability"
+      DROP COLUMN IF EXISTS "availability"
     `);
   }
 }
