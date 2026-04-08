@@ -23,11 +23,11 @@ echo "COMPOSE_PROJECT_NAME=agriplan" >> .env
 
 echo "🔧 Изменяем порты и прячем их на localhost (чтобы они не торчали наружу)..."
 # Меняем стандартные порты в .env и вешаем на 127.0.0.1
-sed -i 's/STUDIO_PORT=3000/STUDIO_PORT=127.0.0.1:3390/g' .env
-sed -i 's/KONG_HTTP_PORT=8000/KONG_HTTP_PORT=127.0.0.1:8021/g' .env
-sed -i 's/KONG_HTTPS_PORT=8443/KONG_HTTPS_PORT=127.0.0.1:8445/g' .env
-sed -i 's/POSTGRES_PORT=5432/POSTGRES_PORT=127.0.0.1:5435/g' .env
-sed -i 's/POOLER_PORT=6543/POOLER_PORT=127.0.0.1:6544/g' .env
+sed -i 's/STUDIO_PORT=3000/STUDIO_PORT=3390/g' .env
+sed -i 's/KONG_HTTP_PORT=8000/KONG_HTTP_PORT=8021/g' .env
+sed -i 's/KONG_HTTPS_PORT=8443/KONG_HTTPS_PORT=8445/g' .env
+sed -i 's/POSTGRES_PORT=5432/POSTGRES_PORT=5435/g' .env
+sed -i 's/POOLER_PORT=6543/POOLER_PORT=6544/g' .env
 sed -i 's|SUPABASE_PUBLIC_URL=http://localhost:8000|SUPABASE_PUBLIC_URL=http://agriplan-kong:8000|g' .env
 
 echo "🔑 Изменяем пароли (Security)..."
