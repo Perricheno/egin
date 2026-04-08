@@ -3,116 +3,74 @@ name: Deploy to Production
 on:
   push:
     branches:
-      - main  # Set to main or master depending on the deployment branch
-
-env:
-  REGISTRY: ghcr.io
+      - main
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set lowercase repo name
-        run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push Frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.REPO_LC }}/agriplan-frontend:latest
-          build-args: |
-             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push Backend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.REPO_LC }}/agriplan-backend:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   deploy:
-    needs: build-and-push
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repository for compose file
-        uses: actions/checkout@v4
-        
-      - name: Create .env file for deploying
-        run: |
-          echo "${{ secrets.PROD_ENV_FILE }}" > .env
-          
-      - name: Deploy to Server via SSH
+      - name: Deploy & Build on Server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: GITHUB_REPOSITORY_OWNER
+          command_timeout: 10m
           script: |
-            mkdir -p ~/agriplan
-            # Copy configuration inside server
-            cd ~/agriplan
+            set -e
             
-            # Login to GHCR on server
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            APP_DIR=~/agriplan
+            REPO_URL="https://github.com/${{ github.repository }}.git"
             
-            # Pull new images
-            REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-            docker pull ghcr.io/${REPO_LC}/agriplan-frontend:latest
-            docker pull ghcr.io/${REPO_LC}/agriplan-backend:latest
-      
-      - name: Copy files and start deployment
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "docker-compose.prod.yml,.env"
-          target: "~/agriplan"
-          
-      - name: Restart containers
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd ~/agriplan
-            # Rename for docker-compose if needed
-            mv docker-compose.prod.yml docker-compose.yml 2>/dev/null || true
+            # 1. Клонируем или обновляем код
+            if [ -d "$APP_DIR/repo" ]; then
+              cd $APP_DIR/repo
+              git fetch --depth 1 origin main
+              git reset --hard origin/main
+            else
+              mkdir -p $APP_DIR
+              git clone --depth 1 --branch main $REPO_URL $APP_DIR/repo
+              cd $APP_DIR/repo
+            fi
             
-            # Startup the updated containers
-            export GITHUB_REPOSITORY_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-            export REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+            # 2. Записываем .env
+            cat > $APP_DIR/.env << 'ENVEOF'
+            ${{ secrets.PROD_ENV_FILE }}
+            ENVEOF
+            # Убираем пробелы в начале строк (heredoc indent)
+            sed -i 's/^[[:space:]]*//' $APP_DIR/.env
             
-            # Создаём общую сеть если её ещё нет (Supabase тоже её использует)
+            # 3. Создаём сеть если нет
             docker network create agriplan_default 2>/dev/null || true
+            
+            # 4. Собираем оба образа ПАРАЛЛЕЛЬНО прямо на сервере
+            cd $APP_DIR/repo
+            
+            docker build \
+              --build-arg NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}" \
+              -t agriplan-frontend:latest \
+              -f frontend/Dockerfile \
+              ./frontend &
+            PID_FRONT=$!
+            
+            docker build \
+              -t agriplan-backend:latest \
+              -f backend/Dockerfile \
+              ./backend &
+            PID_BACK=$!
+            
+            # Ждём завершения обоих билдов
+            wait $PID_FRONT
+            wait $PID_BACK
+            
+            # 5. Копируем docker-compose и запускаем
+            cp docker-compose.prod.yml $APP_DIR/docker-compose.yml
+            cd $APP_DIR
             
             docker compose down
             docker compose up -d
             
-            # Cleanup old images
-            docker image prune -a -f
+            # 6. Чистим мусор
+            docker image prune -f
+            
+            echo "✅ Деплой завершён!"
