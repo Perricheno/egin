@@ -1,27 +1,59 @@
 "use client";
 
-import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
-import { APIProvider, Map, MapControl, ControlPosition } from "@vis.gl/react-google-maps";
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle, useMemo } from "react";
+import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps";
 import { PlatformLanguage, ui } from "@/lib/i18n";
 import { KZ_CENTER, KZ_ZOOM } from "@/lib/kz-regions";
 import { apiUrl } from "@/lib/api";
-import { MapRef } from "./Map"; // Re-use interface
+import { MapRef } from "./Map";
+
+// Вспомогательный компонент для отрисовки полигонов в React-стиле для Google Maps
+const Polygon = (props: { paths: any[], options: any, onClick?: () => void }) => {
+  const map = useMap();
+  const polygonRef = useRef<google.maps.Polygon | null>(null);
+
+  useEffect(() => {
+    if (!map) return;
+    const polygon = new google.maps.Polygon({
+      ...props.options,
+      paths: props.paths,
+      map: map,
+    });
+
+    if (props.onClick) {
+      polygon.addListener("click", props.onClick);
+    }
+
+    polygonRef.current = polygon;
+
+    return () => {
+      polygon.setMap(null);
+      google.maps.event.clearInstanceListeners(polygon);
+    };
+  }, [map, props.paths]); // Перерисовываем при изменении путей
+
+  return null;
+};
 
 interface GoogleMapProps {
   language: PlatformLanguage;
   onPlotClick?: (plot: any) => void;
-  // ... other props can be added to match MapProps
 }
 
 const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
   ({ language, onPlotClick }, ref) => {
     const [plots, setPlots] = useState<any[]>([]);
-    const t = ui[language] || ui.ru;
     const mapRef = useRef<google.maps.Map | null>(null);
+    const t = ui[language] || ui.ru;
 
-    // Track API call
+    // Track API usage once per session/mount
     useEffect(() => {
-        fetch(apiUrl("/api-usage/increment/google_maps"), { method: "POST" }).catch(() => {});
+      const incrementUsage = async () => {
+        try {
+          await fetch(apiUrl("/api-usage/increment/google_maps"), { method: "POST" });
+        } catch (e) {}
+      };
+      incrementUsage();
     }, []);
 
     const fetchPlots = async () => {
@@ -35,7 +67,7 @@ const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
         const json = await response.json();
         if (json.success) setPlots(json.data);
       } catch (err) {
-        console.error("Failed to fetch plots for Google Maps", err);
+        console.error("Google Maps: Failed to fetch plots", err);
       }
     };
 
@@ -57,7 +89,9 @@ const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
         mapRef.current?.panTo({ lat: center[1], lng: center[0] });
         mapRef.current?.setZoom(zoom);
       },
-      changeDrawMode: () => {}, // To be implemented with DrawingManager
+      changeDrawMode: (mode) => {
+        console.warn("DrawingManager not yet implemented for Google Maps Sandbox");
+      },
       deleteSelectedDraw: () => {},
       getSelectedGeometry: () => null,
       executeAutoTool: () => {}
@@ -69,46 +103,63 @@ const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
           <Map
             defaultCenter={{ lat: KZ_CENTER[1], lng: KZ_CENTER[0] }}
             defaultZoom={KZ_ZOOM}
-            mapId={"DEMO_MAP_ID"} // Required for some features
-            onCameraChanged={(ev) => {
-                // can be used for debugging
-            }}
-            mapTypeControl={false}
-            streetViewControl={false}
-            fullscreenControl={false}
+            mapId={"bf19558667822d69"} // Пример Map ID для векторных карт
+            disableDefaultUI={true}
             onLoad={(map) => { mapRef.current = map; }}
+            mapTypeId={"satellite"} // По умолчанию агрономы любят спутник
           >
-            {/* Render Plots using Data Layer or Markers/Polygons */}
             {plots.map((plot) => {
-                const geom = typeof plot.geometry === "string" ? JSON.parse(plot.geometry) : plot.geometry;
-                if (!geom || geom.type !== "Polygon") return null;
-                
-                const paths = geom.coordinates[0].map((coord: any) => ({
-                    lat: coord[1],
-                    lng: coord[0]
-                }));
+              const geom = typeof plot.geometry === "string" ? JSON.parse(plot.geometry) : plot.geometry;
+              if (!geom || (geom.type !== "Polygon" && geom.type !== "MultiPolygon")) return null;
+              
+              // Обработка простого полигона
+              const paths = geom.type === "Polygon" 
+                ? geom.coordinates[0].map((coord: any) => ({ lat: coord[1], lng: coord[0] }))
+                : geom.coordinates[0][0].map((coord: any) => ({ lat: coord[1], lng: coord[0] }));
 
-                return (
-                    <google.maps.Polygon
-                        key={plot.id}
-                        paths={paths}
-                        options={{
-                            fillColor: plot.fillColor || "#2F6B3D",
-                            fillOpacity: 0.4,
-                            strokeColor: "#244F2E",
-                            strokeWeight: 2
-                        }}
-                        onClick={() => onPlotClick?.(plot)}
-                    />
-                );
+              return (
+                <Polygon
+                  key={plot.id}
+                  paths={paths}
+                  options={{
+                    fillColor: plot.fillColor || "#2F6B3D",
+                    fillOpacity: 0.45,
+                    strokeColor: "#FFFFFF",
+                    strokeWeight: 1.5,
+                  }}
+                  onClick={() => onPlotClick?.(plot)}
+                />
+              );
             })}
           </Map>
 
-          {/* Simple Zoom Controls to match UI */}
-          <div className="absolute right-6 top-24 z-20 overflow-hidden rounded-[1.5rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.15)] backdrop-blur-md flex flex-col">
-            <button onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) + 1)} className="h-16 w-16 text-2xl font-light text-[#3F3F46] hover:bg-black/5">+</button>
+          {/* UI Controls */}
+          <div className="absolute right-6 top-24 z-20 flex flex-col overflow-hidden rounded-[1.5rem] bg-white/92 shadow-xl backdrop-blur-md">
+            <button 
+              onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) + 1)}
+              className="h-14 w-14 text-2xl hover:bg-black/5 active:bg-black/10 transition-colors"
+            >
+              +
+            </button>
             <div className="mx-3 h-px bg-black/10" />
-            <button onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) - 1)} className="h-16 w-16 text-2xl font-light text-[#3F3F46] hover:bg-black/5">-</button>
+            <button 
+              onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) - 1)}
+              className="h-14 w-14 text-2xl hover:bg-black/5 active:bg-black/10 transition-colors"
+            >
+              -
+            </button>
+          </div>
+
+          <div className="absolute left-6 bottom-10 z-20">
+             <button 
+                onClick={() => {
+                    const currentType = mapRef.current?.getMapTypeId();
+                    mapRef.current?.setMapTypeId(currentType === 'satellite' ? 'roadmap' : 'satellite');
+                }}
+                className="px-4 py-2 bg-white/90 backdrop-blur-sm rounded-xl shadow-lg text-xs font-bold text-[#2F6B3D] uppercase tracking-wider border border-white/20"
+             >
+                {t?.layers || 'Слои'}
+             </button>
           </div>
         </div>
       </APIProvider>
