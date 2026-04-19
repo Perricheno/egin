@@ -3,6 +3,7 @@ import { DataSourceOptions } from 'typeorm';
 import { Chat, ChatMessage, ChatParticipant } from '../chat/entities/chat.entity';
 import { Crop } from '../crops/entities/crop.entity';
 import { FarmPlot } from '../farm-plots/entities/farm-plot.entity';
+import { FarmActivity } from '../farm-activities/entities/farm-activity.entity';
 import { InfoCenterItem } from '../info-center/entities/info-center-item.entity';
 import { MarketplaceListing } from '../marketplace/entities/marketplace-listing.entity';
 import { Order, OrderItem } from '../orders/entities/order.entity';
@@ -13,6 +14,7 @@ import { parseEnvBoolean, parseEnvNumber } from '../common/utils/env.util';
 export const DATABASE_ENTITIES = [
   User,
   FarmPlot,
+  FarmActivity,
   Crop,
   MarketplaceListing,
   Order,

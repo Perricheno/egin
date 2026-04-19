@@ -25,7 +25,7 @@ export default function ActionModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[140] flex items-center justify-center p-3 pb-28 sm:pb-3">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
@@ -33,14 +33,16 @@ export default function ActionModal({
       />
       
       {/* Modal Box */}
-      <div className="relative z-10 w-[90vw] max-w-md rounded-[2rem] bg-white p-6 shadow-2xl animate-in zoom-in-95 fade-in duration-200">
-        <h2 className="mb-4 text-xl font-bold text-foreground">{title}</h2>
+      <div className="relative z-10 flex max-h-[calc(100dvh-7.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-[2rem] bg-white shadow-2xl animate-in zoom-in-95 fade-in duration-200 sm:max-h-[90vh]">
+        <div className="px-6 pt-6">
+          <h2 className="mb-4 text-xl font-bold text-foreground">{title}</h2>
+        </div>
         
-        <div className="mb-6 text-sm text-muted-foreground">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 text-sm text-muted-foreground">
           {children}
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 border-t border-black/5 bg-white px-6 py-4">
           <Button 
             variant="outline" 
             className="flex-1 rounded-xl h-12" 
