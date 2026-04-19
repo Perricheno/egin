@@ -98,7 +98,7 @@ const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
     }));
 
     return (
-      <APIProvider apiKey={"YOUR_GOOGLE_MAPS_API_KEY"}>
+      <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""}>
         <div className="h-full w-full relative">
           <Map
             defaultCenter={{ lat: KZ_CENTER[1], lng: KZ_CENTER[0] }}
