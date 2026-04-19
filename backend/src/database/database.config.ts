@@ -9,6 +9,7 @@ import { Order, OrderItem } from '../orders/entities/order.entity';
 import { ServiceListing } from '../services/entities/service-listing.entity';
 import { User } from '../users/entities/user.entity';
 import { parseEnvBoolean, parseEnvNumber } from '../common/utils/env.util';
+import { ApiUsage } from '../api-usage/entities/api-usage.entity';
 
 export const DATABASE_ENTITIES = [
   User,
@@ -22,6 +23,7 @@ export const DATABASE_ENTITIES = [
   ChatMessage,
   InfoCenterItem,
   ServiceListing,
+  ApiUsage,
 ];
 
 export const buildDatabaseOptions = (
