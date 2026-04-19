@@ -8,9 +8,11 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { FarmPlotsModule } from './farm-plots/farm-plots.module';
+import { FarmActivitiesModule } from './farm-activities/farm-activities.module';
 import { CropsModule } from './crops/crops.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { AiAdviceModule } from './ai/ai-advice.module';
 import { OrdersModule } from './orders/orders.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { WeatherModule } from './weather/weather.module';
@@ -32,9 +34,11 @@ import { ApiUsageModule } from './api-usage/api-usage.module';
     UsersModule,
     AuthModule,
     FarmPlotsModule,
+    FarmActivitiesModule,
     CropsModule,
     MarketplaceModule,
     AnalyticsModule,
+    AiAdviceModule,
     OrdersModule,
     DashboardModule,
     WeatherModule,

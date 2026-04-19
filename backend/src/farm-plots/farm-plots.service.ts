@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { FarmActivity } from '../farm-activities/entities/farm-activity.entity';
 import { UserRole } from '../users/entities/user.entity';
 import { FarmPlot } from './entities/farm-plot.entity';
 import { CreateFarmPlotDto } from './dto/create-farm-plot.dto';
@@ -16,6 +17,8 @@ export class FarmPlotsService {
   constructor(
     @InjectRepository(FarmPlot)
     private readonly plotRepository: Repository<FarmPlot>,
+    @InjectRepository(FarmActivity)
+    private readonly activityRepository: Repository<FarmActivity>,
   ) {}
 
   private normalizeGeometry(rawGeometry: unknown) {
@@ -110,6 +113,13 @@ export class FarmPlotsService {
     return Number((0.45 + plotDensitySignal * 0.35 + areaSignal * 0.2).toFixed(2));
   }
 
+  private calculateProjectedIncome(plot: FarmPlot, level: 'low' | 'medium' | 'high') {
+    return Math.round(
+      Number(plot.areaSizeHectares || 0) *
+        (level === 'low' ? 420000 : level === 'medium' ? 310000 : 240000),
+    );
+  }
+
   async create(userId: string, dto: CreateFarmPlotDto): Promise<any> {
     try {
       const normalizedGeometry = this.normalizeGeometry(dto.geometry);
@@ -148,13 +158,9 @@ export class FarmPlotsService {
         userId,
         UserRole.FARMER,
       );
-      const projectedIncomeKzt = Math.round(
-        Number(savedPlot.areaSizeHectares || 0) *
-          (competition.level === 'low'
-            ? 420000
-            : competition.level === 'medium'
-              ? 310000
-              : 240000),
+      const projectedIncomeKzt = this.calculateProjectedIncome(
+        savedPlot,
+        competition.level as 'low' | 'medium' | 'high',
       );
 
       return {
@@ -334,6 +340,76 @@ export class FarmPlotsService {
         sameCropPlotCountWeight: 0.35,
         radiusWeight: 0.1,
       },
+    };
+  }
+
+  async getSeasonSummary(id: string, userId: string, role: UserRole) {
+    const plot = await this.plotRepository.findOne({ where: { id } });
+    if (!plot) {
+      throw new NotFoundException('Farm plot not found');
+    }
+
+    if (role !== UserRole.ADMIN && plot.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this farm plot');
+    }
+
+    const [rawTotals, latestActivity] = await Promise.all([
+      this.activityRepository
+        .createQueryBuilder('activity')
+        .select('COUNT(activity.id)', 'activityCount')
+        .addSelect('COALESCE(SUM(activity.costKzt), 0)', 'totalExpensesKzt')
+        .where('activity.plotId = :plotId', { plotId: id })
+        .getRawOne<{
+          activityCount: string;
+          totalExpensesKzt: string;
+        }>(),
+      this.activityRepository.findOne({
+        where: { plotId: id },
+        order: {
+          activityDate: 'DESC',
+          createdAt: 'DESC',
+        },
+      }),
+    ]);
+
+    const competition = await this.getCompetitionByPlotId(id, userId, role);
+    const projectedIncomeKzt = this.calculateProjectedIncome(
+      plot,
+      competition.level as 'low' | 'medium' | 'high',
+    );
+    const totalExpensesKzt = Number(rawTotals?.totalExpensesKzt || 0);
+    const activityCount = Number(rawTotals?.activityCount || 0);
+    const projectedProfitKzt = projectedIncomeKzt - totalExpensesKzt;
+    const costPerHectareKzt =
+      Number(plot.areaSizeHectares || 0) > 0
+        ? Math.round(totalExpensesKzt / Number(plot.areaSizeHectares))
+        : 0;
+
+    return {
+      plotId: plot.id,
+      title: plot.title,
+      cropType: plot.cropType,
+      seasonYear: plot.seasonYear,
+      areaSizeHectares: Number(plot.areaSizeHectares || 0),
+      activityCount,
+      totalExpensesKzt: Math.round(totalExpensesKzt),
+      projectedIncomeKzt,
+      projectedProfitKzt: Math.round(projectedProfitKzt),
+      costPerHectareKzt,
+      competitionLevel: competition.level,
+      latestActivity: latestActivity
+        ? {
+            id: latestActivity.id,
+            type: latestActivity.type,
+            activityDate: latestActivity.activityDate,
+            description: latestActivity.description ?? null,
+            costKzt: Number(latestActivity.costKzt || 0),
+          }
+        : null,
+      note:
+        activityCount === 0
+          ? 'Добавьте записи в журнал, чтобы увидеть реальные расходы сезона.'
+          : 'Расчет основан на журнале работ и текущем MVP-прогнозе дохода.',
     };
   }
 

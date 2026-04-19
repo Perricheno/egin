@@ -85,6 +85,22 @@ export class FarmPlotsController {
     return { success: true, data };
   }
 
+  @Get(':id/season-summary')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Calculate seasonal finance summary for a farm plot.' })
+  async getSeasonSummary(
+    @Req() req: { user: { id: string; role: any } },
+    @Param('id') id: string,
+  ) {
+    const data = await this.farmPlotsService.getSeasonSummary(
+      id,
+      req.user.id,
+      req.user.role,
+    );
+    return { success: true, data };
+  }
+
   @Delete(':id')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)

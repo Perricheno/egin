@@ -51,6 +51,66 @@ import { apiUrl } from "@/lib/api";
 
 type ActiveTab = "home" | "map" | "market" | "profile" | "admin" | "info" | "services";
 
+type FarmActivityType =
+  | "watering"
+  | "fertilizer"
+  | "pesticide"
+  | "planting"
+  | "harvest"
+  | "inspection"
+  | "expense";
+
+type FarmActivity = {
+  id: string;
+  type: FarmActivityType;
+  activityDate: string;
+  description?: string | null;
+  photoUrl?: string | null;
+  costKzt: number;
+  materials?: string[] | null;
+};
+
+type PlotAiAdvice = {
+  source: "openai" | "fallback";
+  title: string;
+  summary: string;
+  actions: string[];
+  risks: string[];
+  confidenceNote: string;
+};
+
+type PlotSeasonSummary = {
+  plotId: string;
+  title: string;
+  cropType?: string | null;
+  seasonYear: number;
+  areaSizeHectares: number;
+  activityCount: number;
+  totalExpensesKzt: number;
+  projectedIncomeKzt: number;
+  projectedProfitKzt: number;
+  costPerHectareKzt: number;
+  competitionLevel: "low" | "medium" | "high";
+  latestActivity: {
+    id: string;
+    type: FarmActivityType;
+    activityDate: string;
+    description?: string | null;
+    costKzt: number;
+  } | null;
+  note: string;
+};
+
+const activityTypeOptions: FarmActivityType[] = [
+  "watering",
+  "fertilizer",
+  "pesticide",
+  "planting",
+  "harvest",
+  "inspection",
+  "expense",
+];
+
 const competitionTone = {
   low: {
     badge: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -113,8 +173,43 @@ export default function Home() {
   const [editTitle, setEditTitle] = useState("");
   const [editCrop, setEditCrop] = useState("");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [plotActivities, setPlotActivities] = useState<FarmActivity[]>([]);
+  const [isActivitiesLoading, setIsActivitiesLoading] = useState(false);
+  const [isActivitySubmitting, setIsActivitySubmitting] = useState(false);
+  const [plotAiAdvice, setPlotAiAdvice] = useState<PlotAiAdvice | null>(null);
+  const [isAiAdviceLoading, setIsAiAdviceLoading] = useState(false);
+  const [seasonSummary, setSeasonSummary] = useState<PlotSeasonSummary | null>(null);
+  const [isSeasonSummaryLoading, setIsSeasonSummaryLoading] = useState(false);
+  const [activityForm, setActivityForm] = useState({
+    type: "watering" as FarmActivityType,
+    activityDate: new Date().toISOString().slice(0, 10),
+    description: "",
+    costKzt: "",
+    materials: "",
+    photoUrl: "",
+  });
 
   const t = ui[language] || ui.ru;
+  const activityTypeLabels: Record<FarmActivityType, string> =
+    language === "kk"
+      ? {
+          watering: "Суару",
+          fertilizer: "Тыңайтқыш",
+          pesticide: "Өңдеу",
+          planting: "Отырғызу",
+          harvest: "Жинау",
+          inspection: "Тексеру",
+          expense: "Шығын",
+        }
+      : {
+          watering: "Полив",
+          fertilizer: "Удобрение",
+          pesticide: "Обработка",
+          planting: "Посадка",
+          harvest: "Сбор",
+          inspection: "Осмотр",
+          expense: "Расход",
+        };
   const localizedCompetition = {
     low: language === "kk" ? "Төмен" : "Низкая",
     medium: language === "kk" ? "Орташа" : "Средняя",
@@ -181,6 +276,10 @@ export default function Home() {
     setEditCrop(plot.cropType || (cropLabels[language] as any).watermelon);
     setFillColor(plot.fillColor || "#D9B44A");
     setIsEditModalOpen(true);
+    setPlotAiAdvice(null);
+    setSeasonSummary(null);
+    fetchPlotActivities(plot.id);
+    fetchSeasonSummary(plot.id);
   };
 
   const showNotification = (
@@ -203,6 +302,211 @@ export default function Home() {
         ? "Сессия аяқталды. Қайта кіріңіз."
         : "Сессия истекла. Войдите заново.",
     );
+  };
+
+  const fetchPlotActivities = async (plotId: string) => {
+    const token = localStorage.getItem("agro_token");
+    if (!token) return;
+
+    setIsActivitiesLoading(true);
+    try {
+      const res = await fetch(apiUrl(`/farm-plots/${plotId}/activities`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
+      const json = await res.json();
+      setPlotActivities(Array.isArray(json.data) ? json.data : []);
+    } catch {
+      setPlotActivities([]);
+    } finally {
+      setIsActivitiesLoading(false);
+    }
+  };
+
+  const fetchSeasonSummary = async (plotId: string) => {
+    const token = localStorage.getItem("agro_token");
+    if (!token) return;
+
+    setIsSeasonSummaryLoading(true);
+    try {
+      const res = await fetch(apiUrl(`/farm-plots/${plotId}/season-summary`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
+      const json = await res.json();
+      setSeasonSummary(json.success && json.data ? json.data : null);
+    } catch {
+      setSeasonSummary(null);
+    } finally {
+      setIsSeasonSummaryLoading(false);
+    }
+  };
+
+  const submitActivity = async () => {
+    if (!editPlotData?.id || isActivitySubmitting) return;
+
+    if (!activityForm.activityDate) {
+      showNotification(
+        language === "kk" ? "Күнді таңдаңыз" : "Выберите дату работы",
+        "warning",
+      );
+      return;
+    }
+
+    setIsActivitySubmitting(true);
+    try {
+      const token = localStorage.getItem("agro_token");
+      if (!token) {
+        handleUnauthorized();
+        return;
+      }
+
+      const materials = activityForm.materials
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      const res = await fetch(apiUrl(`/farm-plots/${editPlotData.id}/activities`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          type: activityForm.type,
+          activityDate: activityForm.activityDate,
+          description: activityForm.description,
+          costKzt: activityForm.costKzt ? Number(activityForm.costKzt) : 0,
+          materials: materials.length ? materials : undefined,
+          photoUrl: activityForm.photoUrl,
+        }),
+      });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error("activity");
+      }
+
+      await Promise.all([
+        fetchPlotActivities(editPlotData.id),
+        fetchSeasonSummary(editPlotData.id),
+      ]);
+      setActivityForm({
+        type: "watering",
+        activityDate: new Date().toISOString().slice(0, 10),
+        description: "",
+        costKzt: "",
+        materials: "",
+        photoUrl: "",
+      });
+      showNotification(
+        language === "kk" ? "Жазба қосылды" : "Запись добавлена",
+        "success",
+      );
+    } catch {
+      showNotification(
+        language === "kk"
+          ? "Жазбаны сақтау мүмкін болмады"
+          : "Не удалось сохранить запись",
+        "error",
+      );
+    } finally {
+      setIsActivitySubmitting(false);
+    }
+  };
+
+  const deleteActivity = async (activityId: string) => {
+    if (!editPlotData?.id) return;
+    if (
+      !confirm(
+        language === "kk"
+          ? "Журнал жазбасын өшіру керек пе?"
+          : "Удалить запись из журнала?",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("agro_token");
+      const res = await fetch(apiUrl(`/farm-activities/${activityId}`), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
+      if (res.ok) {
+        await Promise.all([
+          fetchPlotActivities(editPlotData.id),
+          fetchSeasonSummary(editPlotData.id),
+        ]);
+      }
+    } catch {
+      showNotification(
+        language === "kk"
+          ? "Жазбаны өшіру мүмкін болмады"
+          : "Не удалось удалить запись",
+        "error",
+      );
+    }
+  };
+
+  const fetchPlotAiAdvice = async () => {
+    if (!editPlotData?.id || isAiAdviceLoading) return;
+
+    setIsAiAdviceLoading(true);
+    try {
+      const token = localStorage.getItem("agro_token");
+      if (!token) {
+        handleUnauthorized();
+        return;
+      }
+
+      const res = await fetch(apiUrl(`/farm-plots/${editPlotData.id}/ai-advice`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error("ai");
+      }
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        setPlotAiAdvice(json.data);
+      }
+    } catch {
+      showNotification(
+        language === "kk"
+          ? "AI кеңесті алу мүмкін болмады"
+          : "Не удалось получить AI совет",
+        "error",
+      );
+    } finally {
+      setIsAiAdviceLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -1356,6 +1660,328 @@ export default function Home() {
           >
             Удалить участок
           </button>
+
+          <div className="mt-5 rounded-2xl bg-[#F5F9F4] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/50">
+                  {language === "kk" ? "Маусым қаржысы" : "Финансы сезона"}
+                </p>
+                <p className="mt-1 text-xs font-bold text-[#2F6B3D]/70">
+                  {language === "kk"
+                    ? "Журналдағы шығындар мен болжамды пайда"
+                    : "Расходы из журнала и прогноз прибыли"}
+                </p>
+              </div>
+              {isSeasonSummaryLoading && (
+                <Loader2 className="size-4 animate-spin text-[#2F6B3D]/50" />
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-white px-3 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]/45">
+                  {language === "kk" ? "Шығын" : "Расходы"}
+                </p>
+                <p className="mt-1 text-base font-black text-[#17381C]">
+                  {Math.round(seasonSummary?.totalExpensesKzt ?? 0).toLocaleString("ru-RU")} ₸
+                </p>
+              </div>
+              <div className="rounded-xl bg-white px-3 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]/45">
+                  {language === "kk" ? "Табыс" : "Доход"}
+                </p>
+                <p className="mt-1 text-base font-black text-[#17381C]">
+                  {Math.round(seasonSummary?.projectedIncomeKzt ?? 0).toLocaleString("ru-RU")} ₸
+                </p>
+              </div>
+              <div className="rounded-xl bg-white px-3 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]/45">
+                  {language === "kk" ? "Пайда" : "Прибыль"}
+                </p>
+                <p
+                  className={`mt-1 text-base font-black ${
+                    (seasonSummary?.projectedProfitKzt ?? 0) < 0
+                      ? "text-red-600"
+                      : "text-[#17381C]"
+                  }`}
+                >
+                  {Math.round(seasonSummary?.projectedProfitKzt ?? 0).toLocaleString("ru-RU")} ₸
+                </p>
+              </div>
+              <div className="rounded-xl bg-white px-3 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]/45">
+                  {language === "kk" ? "Жазба" : "Записей"}
+                </p>
+                <p className="mt-1 text-base font-black text-[#17381C]">
+                  {seasonSummary?.activityCount ?? 0}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl bg-white px-3 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#2F6B3D]/45">
+                    {language === "kk" ? "Соңғы жұмыс" : "Последняя работа"}
+                  </p>
+                  <p className="mt-1 text-xs font-black text-[#17381C]">
+                    {seasonSummary?.latestActivity
+                      ? `${activityTypeLabels[seasonSummary.latestActivity.type]} · ${String(
+                          seasonSummary.latestActivity.activityDate,
+                        ).slice(0, 10)}`
+                      : language === "kk"
+                        ? "Әзірге жоқ"
+                        : "Пока нет"}
+                  </p>
+                </div>
+                <div className="rounded-full bg-[#F5F9F4] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#2F6B3D]/60">
+                  {Math.round(seasonSummary?.costPerHectareKzt ?? 0).toLocaleString("ru-RU")} ₸/га
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] font-semibold leading-relaxed text-[#2F6B3D]/58">
+                {seasonSummary?.note ||
+                  (language === "kk"
+                    ? "Журналға жазба қоссаңыз, есеп нақтырақ болады."
+                    : "Добавьте записи в журнал, чтобы расчет стал точнее.")}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl bg-[#17381C] p-4 text-white">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50">
+                  {language === "kk" ? "AI кеңес" : "AI совет"}
+                </p>
+                <p className="mt-1 text-xs font-semibold leading-relaxed text-white/70">
+                  {language === "kk"
+                    ? "Дақыл, ауа райы және журнал бойынша қысқа ұсыныс."
+                    : "Короткая рекомендация по культуре, погоде и журналу."}
+                </p>
+              </div>
+              <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/60">
+                {plotAiAdvice?.source === "openai" ? "OpenAI" : "Fallback"}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={fetchPlotAiAdvice}
+              disabled={isAiAdviceLoading}
+              className="flex h-11 w-full items-center justify-center rounded-xl bg-[#D9B44A] text-xs font-black text-[#17381C] transition-colors hover:bg-[#e3bf52] disabled:opacity-60"
+            >
+              {isAiAdviceLoading
+                ? language === "kk"
+                  ? "Талдауда..."
+                  : "Анализируем..."
+                : language === "kk"
+                  ? "AI кеңес алу"
+                  : "Получить AI совет"}
+            </button>
+
+            {plotAiAdvice && (
+              <div className="mt-4 rounded-xl bg-white/10 p-3">
+                <p className="font-black text-white">{plotAiAdvice.title}</p>
+                <p className="mt-2 text-xs font-semibold leading-relaxed text-white/72">
+                  {plotAiAdvice.summary}
+                </p>
+                <div className="mt-3 grid gap-2">
+                  {plotAiAdvice.actions.map((action) => (
+                    <div
+                      key={action}
+                      className="rounded-lg bg-white/8 px-3 py-2 text-xs font-semibold leading-relaxed text-white/78"
+                    >
+                      {action}
+                    </div>
+                  ))}
+                </div>
+                {plotAiAdvice.risks.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-white/10 px-3 py-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">
+                      {language === "kk" ? "Тәуекелдер" : "Риски"}
+                    </p>
+                    <ul className="mt-2 grid gap-1 text-xs font-semibold leading-relaxed text-white/68">
+                      {plotAiAdvice.risks.map((risk) => (
+                        <li key={risk}>• {risk}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="mt-3 text-[10px] font-semibold leading-relaxed text-white/45">
+                  {plotAiAdvice.confidenceNote}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 rounded-2xl bg-[#F5F9F4] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F6B3D]/50">
+                  {language === "kk" ? "Журнал" : "Журнал работ"}
+                </p>
+                <p className="mt-1 text-xs font-bold text-[#2F6B3D]/70">
+                  {language === "kk"
+                    ? "Алаң бойынша қысқа жазбалар"
+                    : "Короткие записи по участку"}
+                </p>
+              </div>
+              {isActivitiesLoading && (
+                <Loader2 className="size-4 animate-spin text-[#2F6B3D]/50" />
+              )}
+            </div>
+
+            <div className="grid gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={activityForm.type}
+                  onChange={(e) =>
+                    setActivityForm((prev) => ({
+                      ...prev,
+                      type: e.target.value as FarmActivityType,
+                    }))
+                  }
+                  className="h-11 rounded-xl bg-white px-3 text-xs font-bold text-[#2F6B3D] outline-none"
+                >
+                  {activityTypeOptions.map((type) => (
+                    <option key={type} value={type}>
+                      {activityTypeLabels[type]}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={activityForm.activityDate}
+                  onChange={(e) =>
+                    setActivityForm((prev) => ({
+                      ...prev,
+                      activityDate: e.target.value,
+                    }))
+                  }
+                  className="h-11 rounded-xl bg-white px-3 text-xs font-bold text-[#2F6B3D] outline-none"
+                />
+              </div>
+              <textarea
+                rows={3}
+                value={activityForm.description}
+                onChange={(e) =>
+                  setActivityForm((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
+                }
+                placeholder={
+                  language === "kk"
+                    ? "Мысалы: Арбузды суардым, топырақ жақсы."
+                    : "Например: полил арбуз, почва в норме."
+                }
+                className="w-full resize-none rounded-xl bg-white p-3 text-xs font-semibold text-[#2F6B3D] outline-none"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={activityForm.costKzt}
+                  onChange={(e) =>
+                    setActivityForm((prev) => ({
+                      ...prev,
+                      costKzt: e.target.value,
+                    }))
+                  }
+                  placeholder={language === "kk" ? "Шығын, ₸" : "Расход, ₸"}
+                  className="h-11 rounded-xl bg-white px-3 text-xs font-bold text-[#2F6B3D] outline-none"
+                />
+                <input
+                  value={activityForm.materials}
+                  onChange={(e) =>
+                    setActivityForm((prev) => ({
+                      ...prev,
+                      materials: e.target.value,
+                    }))
+                  }
+                  placeholder={
+                    language === "kk"
+                      ? "Материалдар"
+                      : "Материалы через запятую"
+                  }
+                  className="h-11 rounded-xl bg-white px-3 text-xs font-bold text-[#2F6B3D] outline-none"
+                />
+              </div>
+              <input
+                value={activityForm.photoUrl}
+                onChange={(e) =>
+                  setActivityForm((prev) => ({
+                    ...prev,
+                    photoUrl: e.target.value,
+                  }))
+                }
+                placeholder="Фото URL"
+                className="h-11 rounded-xl bg-white px-3 text-xs font-bold text-[#2F6B3D] outline-none"
+              />
+              <button
+                type="button"
+                onClick={submitActivity}
+                disabled={isActivitySubmitting}
+                className="flex h-11 items-center justify-center rounded-xl bg-[#2F6B3D] text-xs font-black text-white transition-colors hover:bg-[#285b34] disabled:opacity-60"
+              >
+                {isActivitySubmitting
+                  ? language === "kk"
+                    ? "Сақталуда..."
+                    : "Сохраняем..."
+                  : language === "kk"
+                    ? "Жазба қосу"
+                    : "Добавить запись"}
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-2">
+              {plotActivities.length === 0 && !isActivitiesLoading ? (
+                <div className="rounded-xl bg-white px-3 py-3 text-xs font-bold text-[#2F6B3D]/55">
+                  {language === "kk"
+                    ? "Әзірге жазба жоқ."
+                    : "Пока записей нет."}
+                </div>
+              ) : (
+                plotActivities.slice(0, 5).map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="rounded-xl bg-white px-3 py-3 text-xs text-[#2F6B3D]"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-black text-[#17381C]">
+                          {activityTypeLabels[activity.type]} ·{" "}
+                          {String(activity.activityDate).slice(0, 10)}
+                        </p>
+                        {activity.description && (
+                          <p className="mt-1 font-semibold leading-relaxed text-[#2F6B3D]/75">
+                            {activity.description}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => deleteActivity(activity.id)}
+                        className="rounded-lg bg-red-50 px-2 py-1 font-black text-red-500"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#2F6B3D]/50">
+                      {Number(activity.costKzt || 0) > 0 && (
+                        <span>{Number(activity.costKzt).toLocaleString("ru-RU")} ₸</span>
+                      )}
+                      {activity.materials?.map((material) => (
+                        <span key={material}>{material}</span>
+                      ))}
+                      {activity.photoUrl && <span>Фото</span>}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </ActionModal>
 

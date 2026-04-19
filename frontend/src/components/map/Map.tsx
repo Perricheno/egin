@@ -84,6 +84,14 @@ const Map = forwardRef<MapRef, MapProps>(
     const [latestEmbedding, setLatestEmbedding] = useState<Float32Array | null>(null);
     const onNotificationRef = useRef(onNotification);
     const onModeChangeRef = useRef(onModeChange);
+    const onPlotClickRef = useRef(onPlotClick);
+    const savedPlotFeaturesRef = useRef<any[]>([]);
+    const pointerStartRef = useRef<{
+      x: number;
+      y: number;
+      time: number;
+    } | null>(null);
+    const lastPlotOpenAtRef = useRef(0);
 
     const [baseMapMode, setBaseMapMode] = useState<BaseMapMode>("simple");
     const [isLayersOpen, setIsLayersOpen] = useState(false);
@@ -91,6 +99,7 @@ const Map = forwardRef<MapRef, MapProps>(
 
     useEffect(() => { onNotificationRef.current = onNotification; }, [onNotification]);
     useEffect(() => { onModeChangeRef.current = onModeChange; }, [onModeChange]);
+    useEffect(() => { onPlotClickRef.current = onPlotClick; }, [onPlotClick]);
 
     useEffect(() => {
       onGeometrySelectedRef.current = onGeometrySelected;
@@ -218,6 +227,7 @@ const Map = forwardRef<MapRef, MapProps>(
               geometry,
             };
           }).filter(Boolean);
+        savedPlotFeaturesRef.current = features as any[];
 
         const source = map.getSource("farm-plots") as maplibregl.GeoJSONSource | undefined;
         if (source) {
@@ -293,24 +303,44 @@ const Map = forwardRef<MapRef, MapProps>(
           }
         });
 
-        map.on("click", "farm-plots-layer", (e) => {
-          const props = e.features?.[0]?.properties;
+        const openPlotEditor = (props: maplibregl.MapGeoJSONFeature["properties"] | null | undefined, lngLat?: maplibregl.LngLat) => {
           if (!props) return;
           if (onPlotClick) {
             onPlotClick(props);
-          } else {
+          } else if (lngLat) {
             new maplibregl.Popup()
-              .setLngLat(e.lngLat)
+              .setLngLat(lngLat)
               .setHTML(`<strong>${props.title}</strong><br/>${t?.culture || 'Культура'}: ${props.cropType}`)
               .addTo(map);
           }
+        };
+
+        const clickablePlotLayers = [
+          "farm-plots-layer",
+          "farm-plots-outline",
+          "farm-plots-labels",
+        ];
+
+        clickablePlotLayers.forEach((layerId) => {
+          map.on("click", layerId, (e) => {
+            openPlotEditor(e.features?.[0]?.properties, e.lngLat);
+          });
         });
-        
-        map.on('mouseenter', 'farm-plots-layer', () => {
-          map.getCanvas().style.cursor = 'pointer';
+
+        map.on("click", (e) => {
+          const features = map.queryRenderedFeatures(e.point, {
+            layers: clickablePlotLayers.filter((layerId) => map.getLayer(layerId)),
+          });
+          openPlotEditor(features[0]?.properties, e.lngLat);
         });
-        map.on('mouseleave', 'farm-plots-layer', () => {
-          map.getCanvas().style.cursor = '';
+
+        clickablePlotLayers.forEach((layerId) => {
+          map.on('mouseenter', layerId, () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+          map.on('mouseleave', layerId, () => {
+            map.getCanvas().style.cursor = '';
+          });
         });
 
       } catch {
@@ -690,6 +720,121 @@ const Map = forwardRef<MapRef, MapProps>(
         }
     };
 
+    const openSavedPlotAtPoint = (
+      clientX: number,
+      clientY: number,
+      event?: {
+        preventDefault: () => void;
+        stopPropagation: () => void;
+      },
+    ) => {
+      if (massWandActiveRef.current) return;
+
+      const map = mapRef.current;
+      const rect = mapContainer.current?.getBoundingClientRect();
+      if (!map || !rect) return;
+
+      const point: [number, number] = [
+        clientX - rect.left,
+        clientY - rect.top,
+      ];
+      const clickablePlotLayers = [
+        "farm-plots-layer",
+        "farm-plots-outline",
+        "farm-plots-labels",
+      ].filter((layerId) => map.getLayer(layerId));
+
+      if (clickablePlotLayers.length === 0) return;
+
+      const renderedFeatures = clickablePlotLayers.length
+        ? map.queryRenderedFeatures(point, {
+            layers: clickablePlotLayers,
+          })
+        : [];
+      let plot = renderedFeatures[0]?.properties;
+
+      if (!plot) {
+        const lngLat = map.unproject(point);
+        const clickedPoint = turf.point([lngLat.lng, lngLat.lat]);
+        const feature = savedPlotFeaturesRef.current.find((candidate) => {
+          try {
+            return turf.booleanPointInPolygon(clickedPoint, candidate as any);
+          } catch {
+            return false;
+          }
+        });
+        plot = feature?.properties;
+      }
+
+      if (!plot) return;
+
+      const now = Date.now();
+      if (now - lastPlotOpenAtRef.current < 350) return;
+      lastPlotOpenAtRef.current = now;
+
+      event?.preventDefault();
+      event?.stopPropagation();
+      onPlotClickRef.current?.(plot);
+    };
+
+    const isTapGesture = (clientX: number, clientY: number, requireStart = true) => {
+      const start = pointerStartRef.current;
+      if (!start) return !requireStart;
+
+      const movedPx = Math.hypot(clientX - start.x, clientY - start.y);
+      const durationMs = Date.now() - start.time;
+
+      return movedPx <= 8 && durationMs <= 800;
+    };
+
+    const rememberPointerStart = (clientX: number, clientY: number) => {
+      pointerStartRef.current = {
+        x: clientX,
+        y: clientY,
+        time: Date.now(),
+      };
+    };
+
+    const handleSavedPlotClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!isTapGesture(event.clientX, event.clientY, false)) return;
+      openSavedPlotAtPoint(event.clientX, event.clientY, event);
+      pointerStartRef.current = null;
+    };
+
+    const handleSavedPlotPointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+      rememberPointerStart(event.clientX, event.clientY);
+    };
+
+    const handleSavedPlotPointerUpCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isTapGesture(event.clientX, event.clientY, true)) {
+        pointerStartRef.current = null;
+        return;
+      }
+      openSavedPlotAtPoint(event.clientX, event.clientY, event);
+      pointerStartRef.current = null;
+    };
+
+    const handleSavedPlotTouchStartCapture = (event: React.TouchEvent<HTMLDivElement>) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      rememberPointerStart(touch.clientX, touch.clientY);
+    };
+
+    const handleSavedPlotTouchEndCapture = (event: React.TouchEvent<HTMLDivElement>) => {
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      if (!isTapGesture(touch.clientX, touch.clientY, true)) {
+        pointerStartRef.current = null;
+        return;
+      }
+      openSavedPlotAtPoint(touch.clientX, touch.clientY, event);
+      pointerStartRef.current = null;
+    };
+
+    const clearPointerStart = () => {
+      pointerStartRef.current = null;
+    };
+
     return (
       <div className="relative h-full w-full">
         {massWandActive && (
@@ -698,7 +843,17 @@ const Map = forwardRef<MapRef, MapProps>(
             onClick={handleWandClick}
           />
         )}
-        <div ref={mapContainer} className="h-full w-full" />
+        <div
+          ref={mapContainer}
+          className="h-full w-full"
+          onClickCapture={handleSavedPlotClickCapture}
+          onPointerDownCapture={handleSavedPlotPointerDownCapture}
+          onPointerUpCapture={handleSavedPlotPointerUpCapture}
+          onPointerCancelCapture={clearPointerStart}
+          onTouchStartCapture={handleSavedPlotTouchStartCapture}
+          onTouchEndCapture={handleSavedPlotTouchEndCapture}
+          onTouchCancelCapture={clearPointerStart}
+        />
         <div className="absolute bottom-40 left-5 z-20 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] lg:left-[120px] lg:bottom-10">
           <button
             type="button"
