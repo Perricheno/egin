@@ -87,7 +87,13 @@ const DrawingManager = ({ mode, onGeometrySelected }: { mode: string, onGeometry
 };
 
 // --- Основной компонент ---
-const GoogleMapComponent = forwardRef<MapRef, any>(
+interface GoogleMapProps {
+  language: PlatformLanguage;
+  onPlotClick?: (plot: any) => void;
+  onGeometrySelected?: (geom: any) => void;
+}
+
+const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
   ({ language, onPlotClick, onGeometrySelected }, ref) => {
     const [plots, setPlots] = useState<any[]>([]);
     const [drawMode, setDrawMode] = useState<string>("");

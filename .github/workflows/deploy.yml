@@ -54,6 +54,8 @@ jobs:
             docker build \
               --build-arg NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}" \
               --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}" \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
               -t agriplan-frontend:latest \
               -f frontend/Dockerfile \
               ./frontend &

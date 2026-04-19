@@ -29,7 +29,8 @@ export const DATABASE_ENTITIES = [
 export const buildDatabaseOptions = (
   env: NodeJS.ProcessEnv = process.env,
 ): TypeOrmModuleOptions & DataSourceOptions => {
-  const isSslEnabled = parseEnvBoolean(env.DB_SSL, env.APP_ENV === 'production');
+  const isProd = env.APP_ENV === 'production' || !!env.DATABASE_URL;
+  const isSslEnabled = parseEnvBoolean(env.DB_SSL, isProd);
 
   const baseConfig: any = {
     type: 'postgres',
