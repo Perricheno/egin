@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agriplan-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: agriplan_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agriplan_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     image: agriplan-backend:latest
     container_name: agriplan-backend
@@ -11,8 +27,10 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
     depends_on:
-      - frontend
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   frontend:
     image: agriplan-frontend:latest
@@ -28,6 +46,9 @@ services:
     image: redis:7-alpine
     container_name: agriplan-redis
     restart: always
+
+volumes:
+  postgres_data:
 
 networks:
   default:
