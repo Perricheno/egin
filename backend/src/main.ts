@@ -10,10 +10,18 @@ async function bootstrap() {
   const corsOrigins = parseEnvList(process.env.CORS_ORIGIN);
   const apiDocsEnabled = parseEnvBoolean(process.env.API_DOCS_ENABLED, true);
 
+  // Improved CORS handling
   app.enableCors({
-    origin: corsOrigins.length > 0 ? corsOrigins : true,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: corsOrigins.length > 0 ? corsOrigins : [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:5173',
+        /\.egin\.kz$/, // All subdomains of egin.kz
+        true // Fallback to true if development or other
+    ],
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
+    allowedHeaders: 'Content-Type, Accept, Authorization',
   });
 
   app.useGlobalPipes(

@@ -10,6 +10,7 @@ import { Order, OrderItem } from '../orders/entities/order.entity';
 import { ServiceListing } from '../services/entities/service-listing.entity';
 import { User } from '../users/entities/user.entity';
 import { parseEnvBoolean, parseEnvNumber } from '../common/utils/env.util';
+import { ApiUsage } from '../api-usage/entities/api-usage.entity';
 
 export const DATABASE_ENTITIES = [
   User,
@@ -24,16 +25,19 @@ export const DATABASE_ENTITIES = [
   ChatMessage,
   InfoCenterItem,
   ServiceListing,
+  ApiUsage,
 ];
 
 export const buildDatabaseOptions = (
   env: NodeJS.ProcessEnv = process.env,
 ): TypeOrmModuleOptions & DataSourceOptions => {
-  const isSslEnabled = parseEnvBoolean(env.DB_SSL, env.APP_ENV === 'production');
+  const isProd = env.APP_ENV === 'production' || !!env.DATABASE_URL;
+  const isSslEnabled = parseEnvBoolean(env.DB_SSL, isProd);
 
   const baseConfig: any = {
     type: 'postgres',
     entities: DATABASE_ENTITIES,
+    autoLoadEntities: true,
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: parseEnvBoolean(env.DB_SYNCHRONIZE, false),
     migrationsRun: parseEnvBoolean(env.DB_MIGRATIONS_RUN, false),
