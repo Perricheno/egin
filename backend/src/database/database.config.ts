@@ -31,8 +31,14 @@ export const DATABASE_ENTITIES = [
 export const buildDatabaseOptions = (
   env: NodeJS.ProcessEnv = process.env,
 ): TypeOrmModuleOptions & DataSourceOptions => {
-  const isProd = env.APP_ENV === 'production' || !!env.DATABASE_URL;
-  const isSslEnabled = parseEnvBoolean(env.DB_SSL, isProd);
+  const hasUrl = !!env.DATABASE_URL;
+
+  // Supabase Supavisor pooler uses port 6543 — transaction mode, max 10 conns per project on free tier
+  const isSupabasePooler =
+    hasUrl && env.DATABASE_URL!.includes('.pooler.supabase.com');
+
+  // SSL always enabled when connecting via URL (Supabase requires it)
+  const isSslEnabled = parseEnvBoolean(env.DB_SSL, hasUrl);
 
   const baseConfig: any = {
     type: 'postgres',
@@ -43,10 +49,21 @@ export const buildDatabaseOptions = (
     migrationsRun: parseEnvBoolean(env.DB_MIGRATIONS_RUN, false),
     logging: parseEnvBoolean(env.DB_LOGGING, false),
     ssl: isSslEnabled ? { rejectUnauthorized: false } : false,
+    extra: {
+      // Supabase free tier: max 60 connections total, pooler transaction mode is stateless
+      max: parseEnvNumber(env.DB_POOL_MAX, isSupabasePooler ? 10 : 20),
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    },
   };
 
-  if (env.DATABASE_URL) {
-    baseConfig.url = env.DATABASE_URL;
+  if (hasUrl) {
+    // Supabase adds ?pgbouncer=true in some dashboard URLs — strip it,
+    // pg driver doesn't need it and TypeORM doesn't use it
+    const url = env.DATABASE_URL!
+      .replace(/[?&]pgbouncer=true/g, '')
+      .replace(/\?$/, '');
+    baseConfig.url = url;
   } else {
     baseConfig.host = env.DB_HOST || 'localhost';
     baseConfig.port = parseEnvNumber(env.DB_PORT, 5432);

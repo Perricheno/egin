@@ -42,10 +42,9 @@ jobs:
             # 1. Записываем .env
             cat > $APP_DIR/.env << 'ENVEOF'
             ${{ secrets.PROD_ENV_FILE }}
-            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            DATABASE_URL=postgres://postgres:${{ secrets.POSTGRES_PASSWORD }}@agriplan-postgres:5432/agriplan_db
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
             REDIS_URL=redis://agriplan-redis:6379
-            DB_SSL=false
+            DB_SSL=true
             DB_MIGRATIONS_RUN=true
             ENVEOF
             sed -i 's/^[[:space:]]*//' $APP_DIR/.env
