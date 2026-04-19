@@ -20,6 +20,7 @@ import { InfoCenterModule } from './info-center/info-center.module';
 import { ServicesModule } from './services/services.module';
 import { buildDatabaseOptions } from './database/database.config';
 import { DemoDataModule } from './demo/demo-data.module';
+import { ApiUsageModule } from './api-usage/api-usage.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { DemoDataModule } from './demo/demo-data.module';
     InfoCenterModule,
     ServicesModule,
     DemoDataModule,
+    ApiUsageModule,
   ],
   controllers: [AppController],
   providers: [AppService],
