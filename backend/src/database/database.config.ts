@@ -34,6 +34,7 @@ export const buildDatabaseOptions = (
   const baseConfig: any = {
     type: 'postgres',
     entities: DATABASE_ENTITIES,
+    autoLoadEntities: true,
     migrations: [__dirname + '/migrations/*{.ts,.js}'],
     synchronize: parseEnvBoolean(env.DB_SYNCHRONIZE, false),
     migrationsRun: parseEnvBoolean(env.DB_MIGRATIONS_RUN, false),
