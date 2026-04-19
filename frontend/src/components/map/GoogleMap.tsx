@@ -5,10 +5,26 @@ import { APIProvider, Map, useMap, useMapsLibrary } from "@vis.gl/react-google-m
 import { PlatformLanguage, ui } from "@/lib/i18n";
 import { KZ_CENTER, KZ_ZOOM } from "@/lib/kz-regions";
 import { apiUrl } from "@/lib/api";
-import { MapRef } from "./Map";
+import type { MapRef } from "./types";
+import { EGIN_GOOGLE_MAP_STYLE, EGIN_MARKER_SVG } from "./styles/egin-map-style";
+import s from "./styles/egin-map.module.css";
 
-// --- Вспомогательный компонент для полигонов ---
-const Polygon = ({ paths, options, onClick }: { paths: any[], options: any, onClick?: () => void }) => {
+// ─── Inline SVG icons (no external deps) ──────────────
+const IconPlus = () => (
+  <svg viewBox="0 0 18 18"><line x1="9" y1="3" x2="9" y2="15" /><line x1="3" y1="9" x2="15" y2="9" /></svg>
+);
+const IconMinus = () => (
+  <svg viewBox="0 0 18 18"><line x1="3" y1="9" x2="15" y2="9" /></svg>
+);
+const IconLayers = () => (
+  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 2L1.5 6.5L9 11L16.5 6.5L9 2Z" />
+    <path d="M1.5 11L9 15.5L16.5 11" />
+  </svg>
+);
+
+// ─── Polygon helper (unchanged logic) ─────────────────
+const Polygon = ({ paths, options, onClick }: { paths: any[]; options: any; onClick?: () => void }) => {
   const map = useMap();
   useEffect(() => {
     if (!map) return;
@@ -22,8 +38,8 @@ const Polygon = ({ paths, options, onClick }: { paths: any[], options: any, onCl
   return null;
 };
 
-// --- Компонент управления рисованием ---
-const DrawingManager = ({ mode, onGeometrySelected }: { mode: string, onGeometrySelected: (geom: any) => void }) => {
+// ─── Drawing Manager (unchanged logic) ────────────────
+const DrawingManager = ({ mode, onGeometrySelected }: { mode: string; onGeometrySelected: (geom: any) => void }) => {
   const map = useMap();
   const drawingLib = useMapsLibrary("drawing");
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
@@ -34,10 +50,11 @@ const DrawingManager = ({ mode, onGeometrySelected }: { mode: string, onGeometry
 
     const dm = new drawingLib.DrawingManager({
       drawingMode: null,
-      drawingControl: false, // Мы управляем кнопками сами
+      drawingControl: false,
       polygonOptions: {
-        fillColor: "#2F6B3D",
-        fillOpacity: 0.45,
+        fillColor: "#4ADE80",
+        fillOpacity: 0.3,
+        strokeColor: "#4ADE80",
         strokeWeight: 2,
         clickable: true,
         editable: true,
@@ -49,36 +66,35 @@ const DrawingManager = ({ mode, onGeometrySelected }: { mode: string, onGeometry
     drawingManagerRef.current = dm;
 
     google.maps.event.addListener(dm, "overlaycomplete", (event: any) => {
-        if (currentShapeRef.current) currentShapeRef.current.setMap(null);
-        currentShapeRef.current = event.overlay;
-        dm.setDrawingMode(null); // Stop drawing after completion
+      if (currentShapeRef.current) currentShapeRef.current.setMap(null);
+      currentShapeRef.current = event.overlay;
+      dm.setDrawingMode(null);
 
-        // Convert to GeoJSON
-        if (event.type === "polygon") {
-            const paths = event.overlay.getPath();
-            const coords = [];
-            for (let i = 0; i < paths.getLength(); i++) {
-                const xy = paths.getAt(i);
-                coords.push([xy.lng(), xy.lat()]);
-            }
-            coords.push(coords[0]); // Close polygon
-            onGeometrySelected({ type: "Polygon", coordinates: [coords] });
+      if (event.type === "polygon") {
+        const paths = event.overlay.getPath();
+        const coords = [];
+        for (let i = 0; i < paths.getLength(); i++) {
+          const xy = paths.getAt(i);
+          coords.push([xy.lng(), xy.lat()]);
         }
+        coords.push(coords[0]);
+        onGeometrySelected({ type: "Polygon", coordinates: [coords] });
+      }
     });
 
     return () => {
-        dm.setMap(null);
-        if (currentShapeRef.current) currentShapeRef.current.setMap(null);
+      dm.setMap(null);
+      if (currentShapeRef.current) currentShapeRef.current.setMap(null);
     };
   }, [map, drawingLib]);
 
   useEffect(() => {
     if (!drawingManagerRef.current) return;
-    
+
     let googleMode: any = null;
-    if (mode === 'draw_polygon') googleMode = google.maps.drawing.OverlayType.POLYGON;
-    else if (mode === 'draw_line_string') googleMode = google.maps.drawing.OverlayType.POLYLINE;
-    else if (mode === 'draw_point') googleMode = google.maps.drawing.OverlayType.MARKER;
+    if (mode === "draw_polygon") googleMode = google.maps.drawing.OverlayType.POLYGON;
+    else if (mode === "draw_line_string") googleMode = google.maps.drawing.OverlayType.POLYLINE;
+    else if (mode === "draw_point") googleMode = google.maps.drawing.OverlayType.MARKER;
 
     drawingManagerRef.current.setDrawingMode(googleMode);
   }, [mode]);
@@ -86,7 +102,7 @@ const DrawingManager = ({ mode, onGeometrySelected }: { mode: string, onGeometry
   return null;
 };
 
-// --- Основной компонент ---
+// ─── Main Component ───────────────────────────────────
 interface GoogleMapProps {
   language: PlatformLanguage;
   onPlotClick?: (plot: any) => void;
@@ -97,6 +113,8 @@ const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
   ({ language, onPlotClick, onGeometrySelected }, ref) => {
     const [plots, setPlots] = useState<any[]>([]);
     const [drawMode, setDrawMode] = useState<string>("");
+    const [isLayersOpen, setIsLayersOpen] = useState(false);
+    const [mapType, setMapType] = useState<"roadmap" | "satellite">("satellite");
     const mapRef = useRef<google.maps.Map | null>(null);
     const t = ui[language] || ui.ru;
 
@@ -111,7 +129,18 @@ const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
         const res = await fetch(apiUrl("/farm-plots"), { headers: { Authorization: `Bearer ${token}` } });
         const json = await res.json();
         if (json.success) setPlots(json.data);
-      } catch (err) { console.error(err); }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    const handleZoomIn = () => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) + 1);
+    const handleZoomOut = () => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) - 1);
+
+    const switchMapType = (type: "roadmap" | "satellite") => {
+      mapRef.current?.setMapTypeId(type);
+      setMapType(type);
+      setIsLayersOpen(false);
     };
 
     useImperativeHandle(ref, () => ({
@@ -129,59 +158,104 @@ const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
       changeDrawMode: (mode) => setDrawMode(mode),
       deleteSelectedDraw: () => setDrawMode(""),
       getSelectedGeometry: () => null,
-      executeAutoTool: () => {}
+      executeAutoTool: () => {},
     }));
 
     return (
       <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""}>
-        <div className="h-full w-full relative">
+        <div className={s.wrapper}>
           <Map
             defaultCenter={{ lat: KZ_CENTER[1], lng: KZ_CENTER[0] }}
             defaultZoom={KZ_ZOOM}
             mapId={"bf19558667822d69"}
             disableDefaultUI={true}
-            onTilesLoaded={(ev) => { if (!mapRef.current) mapRef.current = ev.map; }}
-            mapTypeId={"satellite"}
+            clickableIcons={false}
+            gestureHandling={"greedy"}
+            backgroundColor={"#1a1a1a"}
+            onTilesLoaded={(ev) => {
+              if (!mapRef.current) {
+                mapRef.current = ev.map;
+                // Apply monochrome style when not in satellite mode
+                if (mapType === "roadmap") {
+                  ev.map.setOptions({ styles: EGIN_GOOGLE_MAP_STYLE });
+                }
+              }
+            }}
+            mapTypeId={mapType}
           >
-            <DrawingManager 
-                mode={drawMode} 
-                onGeometrySelected={(geom) => onGeometrySelected?.(geom)} 
+            <DrawingManager
+              mode={drawMode}
+              onGeometrySelected={(geom) => onGeometrySelected?.(geom)}
             />
             {plots.map((plot) => {
               const geom = typeof plot.geometry === "string" ? JSON.parse(plot.geometry) : plot.geometry;
               if (!geom || (geom.type !== "Polygon" && geom.type !== "MultiPolygon")) return null;
-              const paths = geom.type === "Polygon" 
-                ? geom.coordinates[0].map((c: any) => ({ lat: c[1], lng: c[0] }))
-                : geom.coordinates[0][0].map((c: any) => ({ lat: c[1], lng: c[0] }));
+              const paths =
+                geom.type === "Polygon"
+                  ? geom.coordinates[0].map((c: any) => ({ lat: c[1], lng: c[0] }))
+                  : geom.coordinates[0][0].map((c: any) => ({ lat: c[1], lng: c[0] }));
 
               return (
                 <Polygon
                   key={plot.id}
                   paths={paths}
-                  options={{ fillColor: plot.fillColor || "#2F6B3D", fillOpacity: 0.4, strokeColor: "#FFF", strokeWeight: 1 }}
+                  options={{
+                    fillColor: plot.fillColor || "#4ADE80",
+                    fillOpacity: 0.3,
+                    strokeColor: "#fff",
+                    strokeWeight: 1.5,
+                    strokeOpacity: 0.6,
+                  }}
                   onClick={() => onPlotClick?.(plot)}
                 />
               );
             })}
           </Map>
 
-          {/* UI Controls */}
-          <div className="absolute right-6 top-24 z-20 flex flex-col rounded-[1.5rem] bg-white/95 shadow-2xl backdrop-blur-md">
-            <button onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) + 1)} className="h-14 w-14 text-2xl hover:bg-black/5">+</button>
-            <div className="mx-3 h-px bg-black/10" />
-            <button onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) - 1)} className="h-14 w-14 text-2xl hover:bg-black/5">-</button>
+          {/* ── Zoom Controls ──────────────────────── */}
+          <div className={s.zoomGroup}>
+            <button type="button" onClick={handleZoomIn} className={s.zoomBtn} aria-label="Zoom in">
+              <IconPlus />
+            </button>
+            <div className={s.zoomDivider} />
+            <button type="button" onClick={handleZoomOut} className={s.zoomBtn} aria-label="Zoom out">
+              <IconMinus />
+            </button>
           </div>
-          
-          <div className="absolute left-6 bottom-10 z-20">
-             <button 
-                onClick={() => {
-                    const ct = mapRef.current?.getMapTypeId();
-                    mapRef.current?.setMapTypeId(ct === 'satellite' ? 'roadmap' : 'satellite');
-                }}
-                className="px-5 py-2.5 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl text-xs font-black text-[#2F6B3D] uppercase border border-white/40"
-             >
-                {t?.layers || 'Слои'}
-             </button>
+
+          {/* ── Layer Switcher ─────────────────────── */}
+          <div className={s.layerControl}>
+            <button
+              type="button"
+              onClick={() => setIsLayersOpen((o) => !o)}
+              className={s.layerTrigger}
+            >
+              <div className={mapType === "satellite" ? s.layerPreviewSatellite : s.layerPreviewSimple} />
+              <div className={s.layerMeta}>
+                <div className={s.layerLabel}>{t?.layers || "Слои"}</div>
+                <div className={s.layerTitle}>
+                  {mapType === "roadmap" ? (t?.simple || "Схема") : (t?.satellite || "Спутник")}
+                </div>
+              </div>
+            </button>
+            {isLayersOpen && (
+              <div className={s.layerDropdown}>
+                <button
+                  type="button"
+                  onClick={() => switchMapType("roadmap")}
+                  className={mapType === "roadmap" ? s.layerOptionActive : s.layerOptionInactive}
+                >
+                  {t?.simpleMap || "Обычная карта"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchMapType("satellite")}
+                  className={mapType === "satellite" ? s.layerOptionActive : s.layerOptionInactive}
+                >
+                  {t?.satelliteMap || "Спутник"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </APIProvider>

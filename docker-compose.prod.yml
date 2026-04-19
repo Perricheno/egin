@@ -9,8 +9,10 @@ services:
       - .env
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
     depends_on:
       - frontend
+      - redis
 
   frontend:
     image: agriplan-frontend:latest
@@ -22,7 +24,13 @@ services:
       - PORT=3285
       - HOSTNAME=0.0.0.0
 
+  redis:
+    image: redis:7-alpine
+    container_name: agriplan-redis
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
+
 networks:
   default:
     name: agriplan_default
-    external: true

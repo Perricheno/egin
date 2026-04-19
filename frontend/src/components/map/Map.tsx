@@ -1,426 +1,192 @@
 "use client";
 
+import s from "./styles/egin-map.module.css";
 import React, {
   useEffect,
   useImperativeHandle,
   useRef,
   useState,
+  useMemo,
   forwardRef,
+  useCallback,
 } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import { mapboxGlDrawTheme } from "./draw-theme";
-import { PlatformLanguage, ui } from "@/lib/i18n";
+import { mapboxGlDrawTheme } from "./styles/draw-theme";
+import { ui } from "@/lib/i18n";
 import * as turf from "@turf/turf";
-import { lineString, length as turfLength, midpoint as turfMidpoint } from "@turf/turf";
 // @ts-ignore
 import { SnapPolygonMode, SnapLineMode, SnapPointMode, SnapDirectSelect } from "mapbox-gl-draw-snap-mode";
 import { KZ_BOUNDS, KZ_CENTER, KZ_ZOOM } from "@/lib/kz-regions";
-import { applyAutoTool, AutoToolType } from "@/lib/turf-tools";
-import { contours } from "d3-contour";
-import { SamWorkerMessage } from "@/workers/sam.worker";
-import { apiUrl } from "@/lib/api";
+import { applyAutoTool } from "@/lib/turf-tools";
+import type { AutoToolType } from "@/lib/turf-tools";
 
-type BaseMapMode = "simple" | "satellite";
+import type { MapProps, MapRef, BaseMapMode } from "./types";
+import { GOOGLE_MAP_STYLE, SATELLITE_SOURCE } from "./styles/tile-sources";
+import { buildMeasurementLabels, computeMeasurement } from "./utils/geo-helpers";
+import { handleOsmWandClick } from "./utils/osm-wand";
+import { fetchAndRenderPlots, CLICKABLE_PLOT_LAYERS } from "./utils/plot-fetcher";
+import EginToolbar from "./controls/EginToolbar";
+import type { ToolDef } from "./controls/EginToolbar";
+import EginMobileTools from "./controls/EginMobileTools";
+import EginQuotaWidget from "./controls/EginQuotaWidget";
 
-interface MapProps {
-  onGeometrySelected?: (geom: any) => void;
-  drawModeActive?: boolean;
-  rulerModeActive?: boolean;
-  language: PlatformLanguage;
-  showMeasurements: boolean;
-  onPlotClick?: (plot: any) => void;
-  onModeChange?: (mode: string) => void;
-  onMeasurement?: (val: string | null) => void;
-  massWandActive?: boolean;
-  onProcessingStateChange?: (processing: boolean) => void;
-  onNotification?: (msg: string, type: 'error' | 'success' | 'warning') => void;
-}
-
-export interface MapRef {
-  refreshPlots: () => void;
-  focusCurrentLocation: () => void;
-  flyToRegion: (center: [number, number], zoom: number) => void;
-  changeDrawMode: (mode: string) => void;
-  deleteSelectedDraw: () => void;
-  getSelectedGeometry: () => any;
-  executeAutoTool: (tool: AutoToolType) => void;
-}
-
-const GOOGLE_MAP_STYLE = (lang: string) => ({
-  version: 8,
-  sources: {
-    "google-standard": {
-      type: "raster",
-      tiles: [`https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=${lang}`],
-      tileSize: 256,
-      attribution: "© Google",
-    },
-  },
-  layers: [
-    {
-      id: "google-standard-layer",
-      type: "raster",
-      source: "google-standard",
-      minzoom: 0,
-      maxzoom: 22,
-    },
-  ],
-});
+// ────────────────────────────────────────────────────────
+// Map Component (orchestrator)
+// ────────────────────────────────────────────────────────
 
 const Map = forwardRef<MapRef, MapProps>(
-  ({ onGeometrySelected, drawModeActive, rulerModeActive, language, showMeasurements, onPlotClick, onModeChange, onMeasurement, massWandActive, onProcessingStateChange, onNotification }, ref) => {
+  (
+    {
+      onGeometrySelected,
+      drawModeActive,
+      language,
+      showMeasurements,
+      onPlotClick,
+      onModeChange,
+      onMeasurement,
+      massWandActive,
+      onProcessingStateChange,
+      onNotification,
+      drawMode,
+      currentUserRole,
+      isProcessingWand,
+      measurement,
+    },
+    ref,
+  ) => {
+    // ── Refs ──────────────────────────────────────────
     const mapContainer = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const drawRef = useRef<MapboxDraw | null>(null);
-    const markerRef = useRef<maplibregl.Marker | null>(null);
+    const savedPlotFeaturesRef = useRef<any[]>([]);
+    const pointerStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+    const lastPlotOpenAtRef = useRef(0);
+
+    // Stable callback refs
     const onGeometrySelectedRef = useRef(onGeometrySelected);
-    const languageRef = useRef<PlatformLanguage>(language);
+    const languageRef = useRef(language);
     const massWandActiveRef = useRef(massWandActive);
-    const onProcessingStateChangeRef = useRef(onProcessingStateChange);
-    const samWorker = useRef<Worker | null>(null);
-    const [latestEmbedding, setLatestEmbedding] = useState<Float32Array | null>(null);
+    const onProcessingRef = useRef(onProcessingStateChange);
     const onNotificationRef = useRef(onNotification);
     const onModeChangeRef = useRef(onModeChange);
     const onPlotClickRef = useRef(onPlotClick);
-    const savedPlotFeaturesRef = useRef<any[]>([]);
-    const pointerStartRef = useRef<{
-      x: number;
-      y: number;
-      time: number;
-    } | null>(null);
-    const lastPlotOpenAtRef = useRef(0);
 
-    const [baseMapMode, setBaseMapMode] = useState<BaseMapMode>("simple");
-    const [isLayersOpen, setIsLayersOpen] = useState(false);
-    const t = ui[language] || ui.ru;
-
+    useEffect(() => { onGeometrySelectedRef.current = onGeometrySelected; }, [onGeometrySelected]);
+    useEffect(() => { languageRef.current = language; }, [language]);
+    useEffect(() => { massWandActiveRef.current = massWandActive; }, [massWandActive]);
+    useEffect(() => { onProcessingRef.current = onProcessingStateChange; }, [onProcessingStateChange]);
     useEffect(() => { onNotificationRef.current = onNotification; }, [onNotification]);
     useEffect(() => { onModeChangeRef.current = onModeChange; }, [onModeChange]);
     useEffect(() => { onPlotClickRef.current = onPlotClick; }, [onPlotClick]);
 
-    useEffect(() => {
-      onGeometrySelectedRef.current = onGeometrySelected;
-    }, [onGeometrySelected]);
+    // ── State ────────────────────────────────────────
+    const [baseMapMode, setBaseMapMode] = useState<BaseMapMode>("simple");
+    const [isLayersOpen, setIsLayersOpen] = useState(false);
+    const [isQuotaOpen, setIsQuotaOpen] = useState(false);
+    const t = ui[language] || ui.ru;
+    const isKk = language === "kk";
 
-    useEffect(() => {
-      languageRef.current = language;
-    }, [language]);
+    // ── Map helpers (no hooks — just plain fns) ──────
 
-    useEffect(() => {
-      massWandActiveRef.current = massWandActive;
-    }, [massWandActive]);
-
-    useEffect(() => {
-      onProcessingStateChangeRef.current = onProcessingStateChange;
-    }, [onProcessingStateChange]);
-
-    const isTranslatableLabelLayer = (layer: maplibregl.LayerSpecification) => {
-      return false; // Google Maps raster tiles have baked-in labels
-    };
-
-    const formatDistance = (kilometers: number) => {
-      if (kilometers >= 1) return `${kilometers.toFixed(2)} км`;
-      return `${Math.round(kilometers * 1000)} м`;
-    };
-
-    const updateMeasurementLabels = () => {
+    const applyBaseMapMode = useCallback((mode: BaseMapMode) => {
       const map = mapRef.current;
-      const draw = drawRef.current;
+      if (!map || !map.isStyleLoaded()) return;
+      if (map.getLayer("satellite-tiles"))
+        map.setLayoutProperty("satellite-tiles", "visibility", mode === "satellite" ? "visible" : "none");
+      if (map.getLayer("google-standard-layer"))
+        map.setLayoutProperty("google-standard-layer", "visibility", mode === "simple" ? "visible" : "none");
+    }, []);
 
-      if (!map || !draw) return;
-
-      const source = map.getSource("measurement-labels") as maplibregl.GeoJSONSource | undefined;
-      if (!source) return;
-
-      const data = draw.getAll();
-      const feature = data.features[data.features.length - 1];
-      const labels: GeoJSON.Feature<GeoJSON.Point>[] = [];
-
-      if (feature && (feature.geometry.type === "Polygon" || feature.geometry.type === "LineString")) {
-        const coords = (feature.geometry as any).coordinates;
-        const ring = feature.geometry.type === "Polygon" ? coords[0] : coords;
-
-        if (Array.isArray(ring)) {
-          for (let index = 0; index < ring.length - 1; index += 1) {
-            const start = ring[index];
-            const end = ring[index + 1];
-
-            if (!Array.isArray(start) || !Array.isArray(end)) continue;
-
-            const segment = lineString([start, end]);
-            const mid = turfMidpoint(start, end);
-            const kilometers = turfLength(segment, { units: "kilometers" });
-
-            labels.push({
-              type: "Feature",
-              geometry: mid.geometry,
-              properties: { label: formatDistance(kilometers) },
-            });
-          }
-        }
-      }
-      source.setData({ type: "FeatureCollection", features: labels });
-    };
-
-    const applyMeasurementVisibility = () => {
+    const applyMeasurementVisibility = useCallback(() => {
       const map = mapRef.current;
       if (!map || !map.isStyleLoaded()) return;
       if (!map.getLayer("measurement-labels-layer")) return;
       map.setLayoutProperty("measurement-labels-layer", "visibility", showMeasurements ? "visible" : "none");
-    };
+    }, [showMeasurements]);
 
-    const applyBaseMapMode = (mode: BaseMapMode) => {
+    const updateMeasurementLabels = useCallback(() => {
       const map = mapRef.current;
-      if (!map || !map.isStyleLoaded()) return;
+      const draw = drawRef.current;
+      if (!map || !draw) return;
+      const source = map.getSource("measurement-labels") as maplibregl.GeoJSONSource | undefined;
+      if (!source) return;
+      source.setData({ type: "FeatureCollection", features: buildMeasurementLabels(draw) });
+    }, []);
 
-      if (map.getLayer("satellite-tiles")) {
-        map.setLayoutProperty("satellite-tiles", "visibility", mode === "satellite" ? "visible" : "none");
-      }
-      if (map.getLayer("google-standard-layer")) {
-        map.setLayoutProperty("google-standard-layer", "visibility", mode === "simple" ? "visible" : "none");
-      }
-    };
+    const executeGlobalMeasurements = useCallback(() => {
+      if (!onMeasurement || !drawRef.current) return;
+      onMeasurement(computeMeasurement(drawRef.current, turf));
+    }, [onMeasurement]);
 
-    const applyMapLanguage = (selectedLanguage: PlatformLanguage) => {
-      const map = mapRef.current;
-      if (!map || !map.isStyleLoaded()) return;
-      
-      const source = map.getSource("google-standard") as maplibregl.RasterTileSource | undefined;
-      if (source && source.tiles) {
-        const newTiles = [`https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=${selectedLanguage}`];
-        if (source.tiles[0] !== newTiles[0]) {
-           // maplibre-gl doesn't support changing tiles directly, so we need to update the style or recreate the source if possible.
-           // For simplicity in raster, we can just replace the style source. But setStyle is heavy.
-           // However, Maplibre doesn't easily expose setTiles, so we skip dynamic language changing for standard raster map without reload.
-        }
-      }
-    };
-
-    const fetchPlots = async (map: maplibregl.Map) => {
-      try {
-        const token = localStorage.getItem("agro_token");
-        if (!token) return;
-
-        const response = await fetch(apiUrl("/farm-plots"), {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!response.ok) return;
-        const json = await response.json();
-        if (!json.success) return;
-
-        const features = json.data.map((plot: any) => {
-            const geometry = typeof plot.geometry === "string" ? JSON.parse(plot.geometry) : plot.geometry;
-            if (!geometry) return null;
-            return {
-              type: "Feature",
-              properties: {
-                id: plot.id,
-                cropType: plot.cropType,
-                title: plot.title,
-                fillColor: plot.fillColor || null
-              },
-              geometry,
-            };
-          }).filter(Boolean);
-        savedPlotFeaturesRef.current = features as any[];
-
-        const source = map.getSource("farm-plots") as maplibregl.GeoJSONSource | undefined;
-        if (source) {
-          source.setData({ type: "FeatureCollection", features: features as any[] });
-          return;
-        }
-
-        map.addSource("farm-plots", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: features as any[] },
-        });
-
-        map.addLayer({
-          id: "farm-plots-layer",
-          type: "fill",
-          source: "farm-plots",
-          paint: {
-            "fill-color": [
-              "coalesce",
-              ["get", "fillColor"],
-              [
-                "match",
-                ["get", "cropType"],
-                "Арбуз", "#2F6B3D", "Қарбыз", "#2F6B3D", "Watermelon", "#2F6B3D",
-                "Картофель", "#C6A85E", "Картоп", "#C6A85E", "Potato", "#C6A85E",
-                "Пшеница", "#A7B84B", "Бидай", "#A7B84B", "Wheat", "#A7B84B",
-                "Кукуруза", "#D4A017", "Corn", "#D4A017",
-                "Помидоры", "#C0392B", "Tomato", "#C0392B",
-                "Лук", "#8E44AD", "Onion", "#8E44AD",
-                "Морковь", "#E67E22", "Carrot", "#E67E22",
-                "Подсолнечник", "#F1C40F", "Sunflower", "#F1C40F",
-                "Рис", "#1ABC9C", "Rice", "#1ABC9C",
-                "Ячмень", "#27AE60", "Barley", "#27AE60",
-                "Хлопок", "#BDC3C7", "Cotton", "#BDC3C7",
-                "Свёкла", "#9B59B6", "Beet", "#9B59B6",
-                "#888"
-              ]
-            ],
-            "fill-opacity": 0.4,
-          },
-        });
-
-        map.addLayer({
-          id: "farm-plots-outline",
-          type: "line",
-          source: "farm-plots",
-          paint: { "line-color": "#244F2E", "line-width": 2.5, "line-opacity": 0.8 },
-        });
-
-        // Add labels
-        map.addLayer({
-          id: 'farm-plots-labels',
-          type: 'symbol',
-          source: 'farm-plots',
-          layout: {
-            'text-field': [
-              'format',
-              ['get', 'title'],
-              { 'font-scale': 1.1 },
-              '\n',
-              ['get', 'cropType'],
-              { 'font-scale': 0.8 }
-            ],
-            'text-size': 14,
-            'text-anchor': 'center',
-            'text-justify': 'center',
-            'symbol-placement': 'point'
-          },
-          paint: {
-            'text-color': '#ffffff',
-            'text-halo-color': '#000000',
-            'text-halo-width': 2
-          }
-        });
-
-        const openPlotEditor = (props: maplibregl.MapGeoJSONFeature["properties"] | null | undefined, lngLat?: maplibregl.LngLat) => {
-          if (!props) return;
-          if (onPlotClick) {
-            onPlotClick(props);
-          } else if (lngLat) {
-            new maplibregl.Popup()
-              .setLngLat(lngLat)
-              .setHTML(`<strong>${props.title}</strong><br/>${t?.culture || 'Культура'}: ${props.cropType}`)
-              .addTo(map);
-          }
-        };
-
-        const clickablePlotLayers = [
-          "farm-plots-layer",
-          "farm-plots-outline",
-          "farm-plots-labels",
-        ];
-
-        clickablePlotLayers.forEach((layerId) => {
-          map.on("click", layerId, (e) => {
-            openPlotEditor(e.features?.[0]?.properties, e.lngLat);
-          });
-        });
-
-        map.on("click", (e) => {
-          const features = map.queryRenderedFeatures(e.point, {
-            layers: clickablePlotLayers.filter((layerId) => map.getLayer(layerId)),
-          });
-          openPlotEditor(features[0]?.properties, e.lngLat);
-        });
-
-        clickablePlotLayers.forEach((layerId) => {
-          map.on('mouseenter', layerId, () => {
-            map.getCanvas().style.cursor = 'pointer';
-          });
-          map.on('mouseleave', layerId, () => {
-            map.getCanvas().style.cursor = '';
-          });
-        });
-
-      } catch {
-        console.warn("Farm plots are temporarily unavailable");
-      }
-    };
-
-    const focusCurrentLocation = () => {
+    const focusCurrentLocation = useCallback(() => {
       const map = mapRef.current;
       if (!map) return;
       if (!navigator.geolocation) {
-        if (onNotificationRef.current) onNotificationRef.current(t.browseNoGeo || 'No geoloc', 'error');
-        else alert(t.browseNoGeo || 'No geoloc');
+        onNotificationRef.current?.(t.browseNoGeo || "No geoloc", "error");
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        ({ coords }) => {
-          map.flyTo({ center: [coords.longitude, coords.latitude], zoom: 15, essential: true });
-        },
-        () => { 
-            if (onNotificationRef.current) onNotificationRef.current(t.noLocation || 'No loc', 'error');
-            else alert(t.noLocation || 'No loc'); 
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
+        ({ coords }) => map.flyTo({ center: [coords.longitude, coords.latitude], zoom: 15, essential: true }),
+        () => onNotificationRef.current?.(t.noLocation || "No loc", "error"),
+        { enableHighAccuracy: true, timeout: 10000 },
       );
-    };
+    }, [t]);
 
-    const handleZoomIn = () => mapRef.current?.zoomIn();
-    const handleZoomOut = () => mapRef.current?.zoomOut();
+    const handleZoomIn = useCallback(() => mapRef.current?.zoomIn(), []);
+    const handleZoomOut = useCallback(() => mapRef.current?.zoomOut(), []);
+
+    // ── Imperative handle ────────────────────────────
 
     useImperativeHandle(ref, () => ({
-      refreshPlots: () => { if (mapRef.current) fetchPlots(mapRef.current); },
+      refreshPlots: () => {
+        if (mapRef.current)
+          fetchAndRenderPlots(mapRef.current, t?.culture || "Культура", onPlotClickRef.current).then(
+            (f) => { savedPlotFeaturesRef.current = f; },
+          );
+      },
       focusCurrentLocation,
-      flyToRegion: (center: [number, number], zoom: number) => {
-        mapRef.current?.flyTo({ center, zoom, essential: true, duration: 1500 });
-      },
-      changeDrawMode: (mode: string) => {
-        if (drawRef.current) {
-          if (mode === 'direct_select') {
-            const selected = drawRef.current.getSelectedIds();
-            if (selected.length > 0) drawRef.current.changeMode(mode, { featureId: selected[0] });
-            else {
-                if (onNotificationRef.current) onNotificationRef.current('Сначала выберите объект стрелкой для редактирования узлов', 'warning');
-            }
-          } else drawRef.current.changeMode(mode);
+      flyToRegion: (center, zoom) => mapRef.current?.flyTo({ center, zoom, essential: true, duration: 1500 }),
+      changeDrawMode: (mode) => {
+        if (!drawRef.current) return;
+        if (mode === "direct_select") {
+          const ids = drawRef.current.getSelectedIds();
+          if (ids.length > 0) drawRef.current.changeMode(mode, { featureId: ids[0] });
+          else onNotificationRef.current?.("Сначала выберите объект стрелкой", "warning");
+        } else {
+          drawRef.current.changeMode(mode);
         }
       },
-      deleteSelectedDraw: () => {
-        if (drawRef.current) drawRef.current.trash();
-        if (onMeasurement) onMeasurement(null);
-      },
+      deleteSelectedDraw: () => { drawRef.current?.trash(); onMeasurement?.(null); },
       getSelectedGeometry: () => {
-        if (drawRef.current) {
-           const data = drawRef.current.getSelected();
-           if (data.features.length > 0) return data.features[0].geometry;
-        }
-        return null;
+        const data = drawRef.current?.getSelected();
+        return data?.features?.[0]?.geometry ?? null;
       },
-      executeAutoTool: (tool: AutoToolType) => {
+      executeAutoTool: (tool) => {
         if (!drawRef.current) return;
         const selected = drawRef.current.getSelected();
         if (selected.features.length === 0) {
-          if (onNotificationRef.current) onNotificationRef.current('Сначала выделите объекты (Указателем) для применения инструмента.', 'warning');
+          onNotificationRef.current?.("Сначала выделите объекты", "warning");
           return;
         }
-        const newFeatures = applyAutoTool(tool, selected.features);
-        if (newFeatures && newFeatures.length > 0) {
-          drawRef.current.trash(); // remove originals
-          newFeatures.forEach(f => drawRef.current?.add(f));
+        const result = applyAutoTool(tool, selected.features);
+        if (result?.length) {
+          drawRef.current.trash();
+          result.forEach((f) => drawRef.current?.add(f));
         }
-      }
+      },
     }));
 
+    // ── Map initialization ───────────────────────────
+
     useEffect(() => {
-      if (!mapContainer.current) return;
-      if (mapRef.current) return;
+      if (!mapContainer.current || mapRef.current) return;
 
       const map = new maplibregl.Map({
         container: mapContainer.current,
-        style: GOOGLE_MAP_STYLE(languageRef.current) as any,
+        style: GOOGLE_MAP_STYLE(languageRef.current),
         center: KZ_CENTER,
         zoom: KZ_ZOOM,
         maxBounds: KZ_BOUNDS,
@@ -436,69 +202,35 @@ const Map = forwardRef<MapRef, MapProps>(
           draw_polygon: SnapPolygonMode,
           draw_line_string: SnapLineMode,
           draw_point: SnapPointMode,
-          direct_select: SnapDirectSelect
+          direct_select: SnapDirectSelect,
         },
-        userProperties: true, // Required for snap-mode
-        // @ts-ignore - mapbox-gl-draw-snap-mode adds these custom properties
+        userProperties: true,
+        // @ts-ignore
         snap: true,
-        snapOptions: {
-          snapPx: 15,
-          snapToMidPoints: true
-        },
+        snapOptions: { snapPx: 15, snapToMidPoints: true },
         styles: mapboxGlDrawTheme as any,
       });
 
       drawRef.current = draw;
       map.addControl(draw as any, "bottom-right");
 
-      map.on('draw.modechange', (e) => {
-        if (onModeChange) onModeChange(e.mode);
-      });
-
-      const executeGlobalMeasurements = () => {
-        if (!onMeasurement) return;
-        const data = draw.getSelected();
-        if (data.features.length === 0) {
-          onMeasurement(null);
-          return;
-        }
-        const feature = data.features[0];
-        if (feature.geometry.type === 'Polygon') {
-          const area = turf.area(feature);
-          const hectares = area / 10000;
-          onMeasurement(`${hectares.toFixed(2)} га`);
-        } else if (feature.geometry.type === 'LineString') {
-          const length = turf.length(feature, { units: 'kilometers' });
-          onMeasurement(`${length.toFixed(2)} км`);
-        } else if (feature.geometry.type === 'Point') {
-          const coords = feature.geometry.coordinates as number[];
-          onMeasurement(`[${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}]`);
-        } else {
-          onMeasurement(null);
-        }
-      };
+      map.on("draw.modechange", (e) => onModeChangeRef.current?.(e.mode));
 
       map.on("load", () => {
-        if (!map.getSource("satellite")) {
-          map.addSource("satellite", {
-            type: "raster",
-            tiles: ["https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"],
-            tileSize: 256,
-            attribution: "© Google",
-          });
-        }
-        const firstLayerId = map.getStyle().layers?.[0]?.id;
+        // Satellite source
+        if (!map.getSource("satellite")) map.addSource("satellite", SATELLITE_SOURCE as any);
+        const firstLayer = map.getStyle().layers?.[0]?.id;
         if (!map.getLayer("satellite-tiles")) {
           map.addLayer({
             id: "satellite-tiles", type: "raster", source: "satellite",
             minzoom: 0, maxzoom: 20, layout: { visibility: "none" },
             paint: { "raster-saturation": 0.1, "raster-contrast": 0.15 },
-          }, firstLayerId);
+          }, firstLayer);
         }
 
-        if (!map.getSource("measurement-labels")) {
+        // Measurement labels source
+        if (!map.getSource("measurement-labels"))
           map.addSource("measurement-labels", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-        }
         if (!map.getLayer("measurement-labels-layer")) {
           map.addLayer({
             id: "measurement-labels-layer", type: "symbol", source: "measurement-labels",
@@ -507,392 +239,254 @@ const Map = forwardRef<MapRef, MapProps>(
               "text-allow-overlap": true, "text-ignore-placement": true,
               visibility: showMeasurements ? "visible" : "none",
             },
-            paint: { "text-color": "#FFFFFF", "text-halo-color": "#17311F", "text-halo-width": 2, },
+            paint: { "text-color": "#FFFFFF", "text-halo-color": "#17311F", "text-halo-width": 2 },
           });
         }
 
-        applyMapLanguage(languageRef.current);
         applyBaseMapMode(baseMapMode);
         applyMeasurementVisibility();
-        fetchPlots(map);
+        fetchAndRenderPlots(map, t?.culture || "Культура", onPlotClickRef.current)
+          .then((f) => { savedPlotFeaturesRef.current = f; })
+          .catch(() => console.warn("Farm plots temporarily unavailable"));
       });
 
-      map.on("draw.create", () => {
-        updateMeasurementLabels();
-        executeGlobalMeasurements();
-      });
+      const onDrawChange = () => { updateMeasurementLabels(); executeGlobalMeasurements(); };
+      map.on("draw.create", onDrawChange);
+      map.on("draw.update", onDrawChange);
+      map.on("draw.render", updateMeasurementLabels);
+      map.on("draw.selectionchange", executeGlobalMeasurements);
+      map.on("draw.delete", onDrawChange);
 
-      map.on("draw.update", () => {
-        updateMeasurementLabels();
-        executeGlobalMeasurements();
-      });
+      return () => { map.remove(); mapRef.current = null; };
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-      map.on("draw.render", () => {
-        updateMeasurementLabels();
-      });
+    // ── Side-effects ─────────────────────────────────
 
-      map.on("draw.selectionchange", () => {
-        executeGlobalMeasurements();
-      });
-
-      map.on("draw.delete", () => {
-        updateMeasurementLabels();
-        executeGlobalMeasurements();
-      });
-
-      return () => {
-        map.remove();
-        mapRef.current = null;
-      };
-    }, []);
-
-    useEffect(() => { applyBaseMapMode(baseMapMode); }, [baseMapMode]);
-    useEffect(() => { applyMapLanguage(language); }, [language]);
-    useEffect(() => { applyMeasurementVisibility(); }, [showMeasurements]);
+    useEffect(() => { applyBaseMapMode(baseMapMode); }, [baseMapMode, applyBaseMapMode]);
+    useEffect(() => { applyMeasurementVisibility(); }, [showMeasurements, applyMeasurementVisibility]);
 
     useEffect(() => {
       const map = mapRef.current;
       const canvas = map?.getCanvas();
       if (!map || !canvas) return;
-      
       if (massWandActive) {
-        map.dragPan.disable();
-        map.scrollZoom.disable();
-        map.doubleClickZoom.disable();
-        canvas.style.cursor = 'crosshair';
+        map.dragPan.disable(); map.scrollZoom.disable(); map.doubleClickZoom.disable();
+        canvas.style.cursor = "crosshair";
       } else {
-        map.dragPan.enable();
-        map.scrollZoom.enable();
-        map.doubleClickZoom.enable();
+        map.dragPan.enable(); map.scrollZoom.enable(); map.doubleClickZoom.enable();
         canvas.style.cursor = drawModeActive ? "crosshair" : "";
       }
     }, [drawModeActive, massWandActive]);
 
-    const flashHighlight = (feature: any) => {
-        const map = mapRef.current;
-        if (!map) return;
-        const sourceId = '__wand_highlight__';
-        const layerId = '__wand_highlight_fill__';
-        const outlineId = '__wand_highlight_outline__';
-        // cleanup previous
-        if (map.getLayer(layerId)) map.removeLayer(layerId);
-        if (map.getLayer(outlineId)) map.removeLayer(outlineId);
-        if (map.getSource(sourceId)) map.removeSource(sourceId);
-        
-        map.addSource(sourceId, { type: 'geojson', data: feature });
-        map.addLayer({ id: layerId, type: 'fill', source: sourceId, paint: { 'fill-color': '#22c55e', 'fill-opacity': 0.45 } });
-        map.addLayer({ id: outlineId, type: 'line', source: sourceId, paint: { 'line-color': '#16a34a', 'line-width': 3, 'line-opacity': 1 } });
-        
-        // Pulse animation: flash 3 times then remove
-        let count = 0;
-        const interval = setInterval(() => {
-            count++;
-            const opacity = count % 2 === 0 ? 0.45 : 0.1;
-            try { map.setPaintProperty(layerId, 'fill-opacity', opacity); } catch {}
-            if (count >= 6) {
-                clearInterval(interval);
-                setTimeout(() => {
-                    try {
-                        if (map.getLayer(layerId)) map.removeLayer(layerId);
-                        if (map.getLayer(outlineId)) map.removeLayer(outlineId);
-                        if (map.getSource(sourceId)) map.removeSource(sourceId);
-                    } catch {}
-                }, 500);
-            }
-        }, 300);
-    };
+    // ── Wand click handler ───────────────────────────
 
-    const handleWandClick = async (e: React.MouseEvent) => {
-        if (e.button !== 0) return;
-        const map = mapRef.current;
-        const rect = mapContainer.current?.getBoundingClientRect();
-        if (!rect || !map) return;
+    const handleWandClick = useCallback(async (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      const map = mapRef.current;
+      const draw = drawRef.current;
+      const rect = mapContainer.current?.getBoundingClientRect();
+      if (!rect || !map || !draw) return;
 
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const lngLat = map.unproject([x, y]);
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const lngLat = map.unproject([x, y]);
 
-        if (onProcessingStateChangeRef.current) onProcessingStateChangeRef.current(true);
-        if (onNotificationRef.current) onNotificationRef.current('Поиск поля в OSM...', 'warning');
+      await handleOsmWandClick(lngLat, draw, map, {
+        onProcessing: onProcessingRef.current ?? undefined,
+        onNotification: onNotificationRef.current ?? undefined,
+      });
+    }, []);
 
-        try {
-            const point = turf.point([lngLat.lng, lngLat.lat]);
-            const buffered = turf.buffer(point, 0.5, { units: 'kilometers' });
-            const bbox = turf.bbox(buffered!);
-            const [w, s, eB, n] = bbox;
+    // ── Plot-click pointer handlers ──────────────────
 
-            const query = `[out:json][timeout:30];(
-              way["landuse"~"farmland|meadow|orchard|vineyard|allotments|grass"](${s},${w},${n},${eB});
-              relation["landuse"~"farmland|meadow|orchard|vineyard|allotments|grass"](${s},${w},${n},${eB});
-              way["natural"~"grassland|scrub"](${s},${w},${n},${eB});
-              way["crop"](${s},${w},${n},${eB});
-            );out geom;`;
-
-            let res: Response | null = null;
-            for (let i = 0; i < 3; i++) {
-                try {
-                    res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-                    if (res.ok) break;
-                    res = null;
-                } catch { /* retry */ }
-                if (!res && i < 2) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
-            }
-            if (!res) throw new Error('Overpass API unavailable');
-
-            const data = await res.json();
-            let targetFeature: any = null;
-            let smallestArea = Infinity;
-
-            if (data?.elements?.length > 0) {
-                // --- Process ways ---
-                for (const el of data.elements) {
-                    if (el.type !== 'way' || !el.geometry) continue;
-                    const coords = el.geometry.map((p: any) => [p.lon, p.lat]);
-                    if (coords.length < 3) continue;
-                    if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])
-                        coords.push([...coords[0]]);
-                    try {
-                        const poly = turf.polygon([coords]);
-                        if (turf.booleanPointInPolygon(point, poly)) {
-                            const a = turf.area(poly);
-                            if (a < smallestArea) { smallestArea = a; targetFeature = poly; }
-                        }
-                    } catch {}
-                }
-
-                // --- Process relations (multipolygons) ---
-                if (!targetFeature) {
-                    for (const el of data.elements) {
-                        if (el.type !== 'relation' || !el.members) continue;
-                        for (const m of el.members) {
-                            if (m.role !== 'outer' || !m.geometry) continue;
-                            const coords = m.geometry.map((p: any) => [p.lon, p.lat]);
-                            if (coords.length < 3) continue;
-                            if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])
-                                coords.push([...coords[0]]);
-                            try {
-                                const poly = turf.polygon([coords]);
-                                if (turf.booleanPointInPolygon(point, poly)) {
-                                    const a = turf.area(poly);
-                                    if (a < smallestArea) { smallestArea = a; targetFeature = poly; }
-                                }
-                            } catch {}
-                        }
-                    }
-                }
-
-                // --- Fallback: nearest field ---
-                if (!targetFeature) {
-                    let nearestDist = Infinity;
-                    for (const el of data.elements) {
-                        if (el.type !== 'way' || !el.geometry) continue;
-                        const coords = el.geometry.map((p: any) => [p.lon, p.lat]);
-                        if (coords.length < 3) continue;
-                        if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])
-                            coords.push([...coords[0]]);
-                        try {
-                            const poly = turf.polygon([coords]);
-                            const d = turf.distance(point, turf.centroid(poly));
-                            if (d < nearestDist) { nearestDist = d; targetFeature = poly; }
-                        } catch {}
-                    }
-                }
-
-                if (targetFeature && drawRef.current) {
-                    drawRef.current.add(targetFeature);
-                    flashHighlight(targetFeature);
-                }
-            }
-
-            if (targetFeature) {
-                if (onNotificationRef.current) onNotificationRef.current(
-                    `Поле определено! (${(smallestArea / 10000).toFixed(1)} га)`, 'success');
-            } else {
-                if (onNotificationRef.current) onNotificationRef.current(
-                    'Полей в базе OSM в радиусе 500м не найдено.', 'warning');
-            }
-        } catch (err) {
-            console.error(err);
-            if (onNotificationRef.current) onNotificationRef.current(
-                'Сбой Overpass API. Попробуйте снова.', 'error');
-        } finally {
-            if (onProcessingStateChangeRef.current) onProcessingStateChangeRef.current(false);
-        }
-    };
-
-    const openSavedPlotAtPoint = (
-      clientX: number,
-      clientY: number,
-      event?: {
-        preventDefault: () => void;
-        stopPropagation: () => void;
-      },
-    ) => {
+    const openSavedPlotAtPoint = useCallback((clientX: number, clientY: number, event?: { preventDefault: () => void; stopPropagation: () => void }) => {
       if (massWandActiveRef.current) return;
-
       const map = mapRef.current;
       const rect = mapContainer.current?.getBoundingClientRect();
       if (!map || !rect) return;
 
-      const point: [number, number] = [
-        clientX - rect.left,
-        clientY - rect.top,
-      ];
-      const clickablePlotLayers = [
-        "farm-plots-layer",
-        "farm-plots-outline",
-        "farm-plots-labels",
-      ].filter((layerId) => map.getLayer(layerId));
+      const point: [number, number] = [clientX - rect.left, clientY - rect.top];
+      const layers = CLICKABLE_PLOT_LAYERS.filter((id) => map.getLayer(id));
+      if (layers.length === 0) return;
 
-      if (clickablePlotLayers.length === 0) return;
-
-      const renderedFeatures = clickablePlotLayers.length
-        ? map.queryRenderedFeatures(point, {
-            layers: clickablePlotLayers,
-          })
-        : [];
-      let plot = renderedFeatures[0]?.properties;
+      const rendered = map.queryRenderedFeatures(point, { layers });
+      let plot = rendered[0]?.properties;
 
       if (!plot) {
         const lngLat = map.unproject(point);
-        const clickedPoint = turf.point([lngLat.lng, lngLat.lat]);
-        const feature = savedPlotFeaturesRef.current.find((candidate) => {
-          try {
-            return turf.booleanPointInPolygon(clickedPoint, candidate as any);
-          } catch {
-            return false;
-          }
+        const clicked = turf.point([lngLat.lng, lngLat.lat]);
+        const found = savedPlotFeaturesRef.current.find((f) => {
+          try { return turf.booleanPointInPolygon(clicked, f as any); } catch { return false; }
         });
-        plot = feature?.properties;
+        plot = found?.properties;
       }
 
       if (!plot) return;
-
       const now = Date.now();
       if (now - lastPlotOpenAtRef.current < 350) return;
       lastPlotOpenAtRef.current = now;
-
       event?.preventDefault();
       event?.stopPropagation();
       onPlotClickRef.current?.(plot);
+    }, []);
+
+    const isTap = (cx: number, cy: number, requireStart = true) => {
+      const s = pointerStartRef.current;
+      if (!s) return !requireStart;
+      return Math.hypot(cx - s.x, cy - s.y) <= 8 && Date.now() - s.time <= 800;
     };
 
-    const isTapGesture = (clientX: number, clientY: number, requireStart = true) => {
-      const start = pointerStartRef.current;
-      if (!start) return !requireStart;
-
-      const movedPx = Math.hypot(clientX - start.x, clientY - start.y);
-      const durationMs = Date.now() - start.time;
-
-      return movedPx <= 8 && durationMs <= 800;
+    const rememberStart = (cx: number, cy: number) => {
+      pointerStartRef.current = { x: cx, y: cy, time: Date.now() };
     };
 
-    const rememberPointerStart = (clientX: number, clientY: number) => {
-      pointerStartRef.current = {
-        x: clientX,
-        y: clientY,
-        time: Date.now(),
-      };
+    const clearStart = () => { pointerStartRef.current = null; };
+
+    const onClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isTap(e.clientX, e.clientY, false)) return;
+      openSavedPlotAtPoint(e.clientX, e.clientY, e);
+      clearStart();
+    };
+    const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => rememberStart(e.clientX, e.clientY);
+    const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!isTap(e.clientX, e.clientY, true)) { clearStart(); return; }
+      openSavedPlotAtPoint(e.clientX, e.clientY, e);
+      clearStart();
+    };
+    const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+      const t = e.touches[0]; if (t) rememberStart(t.clientX, t.clientY);
+    };
+    const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+      const t = e.changedTouches[0]; if (!t) return;
+      if (!isTap(t.clientX, t.clientY, true)) { clearStart(); return; }
+      openSavedPlotAtPoint(t.clientX, t.clientY, e as any);
+      clearStart();
     };
 
-    const handleSavedPlotClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!isTapGesture(event.clientX, event.clientY, false)) return;
-      openSavedPlotAtPoint(event.clientX, event.clientY, event);
-      pointerStartRef.current = null;
-    };
+    // ── Toolbar tool definitions ─────────────────────
 
-    const handleSavedPlotPointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-      rememberPointerStart(event.clientX, event.clientY);
-    };
+    const drawModeValue = drawMode || "";
 
-    const handleSavedPlotPointerUpCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!isTapGesture(event.clientX, event.clientY, true)) {
-        pointerStartRef.current = null;
-        return;
-      }
-      openSavedPlotAtPoint(event.clientX, event.clientY, event);
-      pointerStartRef.current = null;
-    };
+    const toolDefs: ToolDef[] = useMemo(() => [
+      { id: "location", label: isKk ? "Менің орным" : "Моя точка",
+        icon: <svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="3" /><line x1="9" y1="1" x2="9" y2="4" /><line x1="9" y1="14" x2="9" y2="17" /><line x1="1" y1="9" x2="4" y2="9" /><line x1="14" y1="9" x2="17" y2="9" /></svg>,
+        onClick: focusCurrentLocation },
+      { id: "simple_select", label: isKk ? "Таңдау" : "Выбор",
+        icon: <svg viewBox="0 0 18 18"><path d="M4 2L4 14L7.5 10.5L11 14L13 12L9.5 8.5L14 5Z" /></svg>,
+        onClick: () => { drawRef.current?.changeMode("simple_select"); onModeChange?.("simple_select"); },
+        active: drawModeValue === "simple_select" },
+      { id: "direct_select", label: isKk ? "Түзету" : "Правка",
+        icon: <svg viewBox="0 0 18 18"><rect x="3" y="3" width="12" height="12" rx="1" /><circle cx="3" cy="3" r="1.5" fill="currentColor" /><circle cx="15" cy="3" r="1.5" fill="currentColor" /><circle cx="3" cy="15" r="1.5" fill="currentColor" /><circle cx="15" cy="15" r="1.5" fill="currentColor" /></svg>,
+        onClick: () => {
+          const ids = drawRef.current?.getSelectedIds();
+          if (ids?.length) drawRef.current?.changeMode("direct_select", { featureId: ids[0] });
+          else onNotification?.(isKk ? "Алдымен нысанды таңдаңыз" : "Сначала выберите объект", "warning");
+        },
+        active: drawModeValue === "direct_select", divider: true },
+      { id: "draw_polygon", label: isKk ? "Алаң сызу" : "Нарисовать поле",
+        icon: <svg viewBox="0 0 18 18"><polygon points="9,2 16,7 14,15 4,15 2,7" /></svg>,
+        onClick: () => { drawRef.current?.changeMode("draw_polygon"); onModeChange?.("draw_polygon"); },
+        active: drawModeValue === "draw_polygon" },
+      { id: "draw_line_string", label: isKk ? "Сызық" : "Линия",
+        icon: <svg viewBox="0 0 18 18"><path d="M3 15L8 6L12 10L15 3" /></svg>,
+        onClick: () => { drawRef.current?.changeMode("draw_line_string"); onModeChange?.("draw_line_string"); },
+        active: drawModeValue === "draw_line_string" },
+      { id: "draw_point", label: isKk ? "Белгі" : "Метка",
+        icon: <svg viewBox="0 0 18 18"><path d="M9 2C6.24 2 4 4.24 4 7C4 11 9 16 9 16C9 16 14 11 14 7C14 4.24 11.76 2 9 2Z" /><circle cx="9" cy="7" r="2" /></svg>,
+        onClick: () => { drawRef.current?.changeMode("draw_point"); onModeChange?.("draw_point"); },
+        active: drawModeValue === "draw_point" },
+      { id: "mass_magic_wand", label: isKk ? "Автоанықтау" : "Автоопределение",
+        icon: isProcessingWand
+          ? <svg viewBox="0 0 18 18" className="animate-spin"><circle cx="9" cy="9" r="7" strokeDasharray="14 28" /></svg>
+          : <svg viewBox="0 0 18 18"><path d="M3 3L5 8L3 13L8 11L13 13L11 8L13 3L8 5Z" /><line x1="13" y1="3" x2="16" y2="1" /><line x1="15" y1="7" x2="17" y2="7" /><line x1="13" y1="13" x2="16" y2="16" /></svg>,
+        onClick: () => onModeChange?.("mass_magic_wand"),
+        active: drawModeValue === "mass_magic_wand", divider: true },
+      { id: "hexGrid", label: isKk ? "Гекс тор" : "Гекс-сетка",
+        icon: <svg viewBox="0 0 18 18"><polygon points="9,1 15,4.5 15,11.5 9,15 3,11.5 3,4.5" /><line x1="9" y1="1" x2="9" y2="15" /><line x1="3" y1="4.5" x2="15" y2="4.5" /><line x1="3" y1="11.5" x2="15" y2="11.5" /></svg>,
+        onClick: () => {
+          if (!drawRef.current) return;
+          const sel = drawRef.current.getSelected();
+          if (!sel.features.length) { onNotification?.(isKk ? "Алдымен нысандарды таңдаңыз" : "Сначала выделите объекты", "warning"); return; }
+          const res = applyAutoTool("hexGrid_1ha", sel.features);
+          if (res?.length) { drawRef.current.trash(); res.forEach(f => drawRef.current?.add(f)); }
+        }},
+      { id: "delete", label: isKk ? "Жою" : "Удалить",
+        icon: <svg viewBox="0 0 18 18"><path d="M3 5H15" /><path d="M6 5V3H12V5" /><path d="M5 5L6 15H12L13 5" /><line x1="8" y1="8" x2="8" y2="12" /><line x1="10" y1="8" x2="10" y2="12" /></svg>,
+        onClick: () => { drawRef.current?.trash(); onMeasurement?.(null); },
+        danger: true, divider: true },
+    ], [drawModeValue, isKk, isProcessingWand, focusCurrentLocation, onModeChange, onMeasurement, onNotification]);
 
-    const handleSavedPlotTouchStartCapture = (event: React.TouchEvent<HTMLDivElement>) => {
-      const touch = event.touches[0];
-      if (!touch) return;
-      rememberPointerStart(touch.clientX, touch.clientY);
-    };
+    const isAdmin = currentUserRole === "admin";
 
-    const handleSavedPlotTouchEndCapture = (event: React.TouchEvent<HTMLDivElement>) => {
-      const touch = event.changedTouches[0];
-      if (!touch) return;
-      if (!isTapGesture(touch.clientX, touch.clientY, true)) {
-        pointerStartRef.current = null;
-        return;
-      }
-      openSavedPlotAtPoint(touch.clientX, touch.clientY, event);
-      pointerStartRef.current = null;
-    };
-
-    const clearPointerStart = () => {
-      pointerStartRef.current = null;
-    };
+    // ── Render ───────────────────────────────────────
 
     return (
-      <div className="relative h-full w-full">
-        {massWandActive && (
-          <div
-            className="absolute inset-0 z-10 cursor-crosshair select-none"
-            onClick={handleWandClick}
-          />
-        )}
+      <div className={s.wrapper}>
+        {massWandActive && <div className={s.wandOverlay} onClick={handleWandClick} />}
+
         <div
           ref={mapContainer}
-          className="h-full w-full"
-          onClickCapture={handleSavedPlotClickCapture}
-          onPointerDownCapture={handleSavedPlotPointerDownCapture}
-          onPointerUpCapture={handleSavedPlotPointerUpCapture}
-          onPointerCancelCapture={clearPointerStart}
-          onTouchStartCapture={handleSavedPlotTouchStartCapture}
-          onTouchEndCapture={handleSavedPlotTouchEndCapture}
-          onTouchCancelCapture={clearPointerStart}
+          className={s.canvas}
+          onClickCapture={onClickCapture}
+          onPointerDownCapture={onPointerDown}
+          onPointerUpCapture={onPointerUp}
+          onPointerCancelCapture={clearStart}
+          onTouchStartCapture={onTouchStart}
+          onTouchEndCapture={onTouchEnd}
+          onTouchCancelCapture={clearStart}
         />
-        <div className="absolute bottom-40 left-5 z-20 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] lg:left-[120px] lg:bottom-10">
-          <button
-            type="button"
-            onClick={() => setIsLayersOpen((open) => !open)}
-            className="flex w-28 flex-col overflow-hidden rounded-[1.3rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md border border-white/20 transition-all active:scale-95"
-          >
-            <div className={`h-16 w-full ${baseMapMode === "satellite" ? "bg-[radial-gradient(circle_at_30%_30%,#56714b,transparent_35%),linear-gradient(135deg,#1d2a1d_0%,#415d3b_25%,#8a7b5c_55%,#2d3629_100%)]" : "bg-[linear-gradient(135deg,#d7ead6_0%,#eef5e8_42%,#bcd7b8_42%,#dcead8_100%)]" }`} />
-            <div className="px-4 py-2.5 text-left">
-              <div className="text-xs font-black uppercase tracking-[0.18em] text-[#2F6B3D]/45">{t?.layers || 'Слои'}</div>
-              <div className="mt-1.5 text-[0.84rem] leading-tight font-black text-[#2F6B3D] break-words">
-                {baseMapMode === "simple" ? (t?.simple || 'Схема') : (t?.satellite || 'Спутник')}
-              </div>
+
+        {/* Desktop toolbar */}
+        <div className="hidden lg:block"><EginToolbar tools={toolDefs} /></div>
+        {/* Mobile tools */}
+        <div className="lg:hidden"><EginMobileTools tools={toolDefs} /></div>
+
+        {/* Measurement */}
+        {measurement && (
+          <div className={s.measureBar}>
+            <span className={s.measureLabel}>{isKk ? "Өлшем" : "Измерение"}</span>
+            <span className={s.measureValue}>{measurement}</span>
+            <span className={s.measureMode}>{drawModeValue.replace(/_/g, " ")}</span>
+          </div>
+        )}
+
+        {/* Admin quota */}
+        {isAdmin && !isQuotaOpen && (
+          <button type="button" onClick={() => setIsQuotaOpen(true)} className={s.quotaToggle} aria-label="API Quotas">
+            <svg viewBox="0 0 18 18"><rect x="2" y="10" width="3" height="6" rx="0.5" /><rect x="7.5" y="6" width="3" height="10" rx="0.5" /><rect x="13" y="2" width="3" height="14" rx="0.5" /></svg>
+          </button>
+        )}
+        <EginQuotaWidget visible={isAdmin && isQuotaOpen} onClose={() => setIsQuotaOpen(false)} />
+
+        {/* Layer switcher */}
+        <div className={s.layerControl}>
+          <button type="button" onClick={() => setIsLayersOpen((o) => !o)} className={s.layerTrigger}>
+            <div className={baseMapMode === "satellite" ? s.layerPreviewSatellite : s.layerPreviewSimple} />
+            <div className={s.layerMeta}>
+              <div className={s.layerLabel}>{t?.layers || "Слои"}</div>
+              <div className={s.layerTitle}>{baseMapMode === "simple" ? (t?.simple || "Схема") : (t?.satellite || "Спутник")}</div>
             </div>
           </button>
           {isLayersOpen && (
-            <div className="mt-2.5 flex w-40 flex-col gap-2 rounded-[1.3rem] bg-white/95 p-2 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-md">
-              <button
-                type="button" onClick={() => { setBaseMapMode("simple"); setIsLayersOpen(false); }}
-                className={`rounded-[1rem] px-3 py-2.5 text-left text-xs font-black transition-colors ${baseMapMode === "simple" ? "bg-[#2F6B3D] text-white" : "bg-[#F5F9F4] text-[#2F6B3D] hover:bg-[#E6F0E2]"}`}
-              >
-                {t?.simpleMap || 'Обычная карта'}
+            <div className={s.layerDropdown}>
+              <button type="button" onClick={() => { setBaseMapMode("simple"); setIsLayersOpen(false); }} className={baseMapMode === "simple" ? s.layerOptionActive : s.layerOptionInactive}>
+                {t?.simpleMap || "Обычная карта"}
               </button>
-              <button
-                type="button" onClick={() => { setBaseMapMode("satellite"); setIsLayersOpen(false); }}
-                className={`rounded-[1rem] px-3 py-2.5 text-left text-xs font-black transition-colors ${baseMapMode === "satellite" ? "bg-[#2F6B3D] text-white" : "bg-[#F5F9F4] text-[#2F6B3D] hover:bg-[#E6F0E2]"}`}
-              >
-                {t?.satelliteMap || 'Спутник'}
+              <button type="button" onClick={() => { setBaseMapMode("satellite"); setIsLayersOpen(false); }} className={baseMapMode === "satellite" ? s.layerOptionActive : s.layerOptionInactive}>
+                {t?.satelliteMap || "Спутник"}
               </button>
             </div>
           )}
         </div>
 
-        <div className="absolute right-6 top-24 z-20 overflow-hidden rounded-[1.5rem] bg-white/92 shadow-[0_18px_40px_rgba(0,0,0,0.15)] backdrop-blur-md">
-          <button type="button" onClick={handleZoomIn} className="flex h-16 w-16 items-center justify-center text-4xl font-light text-[#3F3F46] transition-colors hover:bg-black/5 active:bg-black/10">
-            +
+        {/* Zoom */}
+        <div className={s.zoomGroup}>
+          <button type="button" onClick={handleZoomIn} className={s.zoomBtn} aria-label="Zoom in">
+            <svg viewBox="0 0 18 18"><line x1="9" y1="3" x2="9" y2="15" /><line x1="3" y1="9" x2="15" y2="9" /></svg>
           </button>
-          <div className="mx-3 h-px bg-black/10" />
-          <button type="button" onClick={handleZoomOut} className="flex h-16 w-16 items-center justify-center text-4xl font-light text-[#3F3F46] transition-colors hover:bg-black/5 active:bg-black/10">
-            -
+          <div className={s.zoomDivider} />
+          <button type="button" onClick={handleZoomOut} className={s.zoomBtn} aria-label="Zoom out">
+            <svg viewBox="0 0 18 18"><line x1="3" y1="9" x2="15" y2="9" /></svg>
           </button>
         </div>
       </div>
@@ -902,3 +496,4 @@ const Map = forwardRef<MapRef, MapProps>(
 
 Map.displayName = "Map";
 export default Map;
+export type { MapRef, MapProps };

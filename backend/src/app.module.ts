@@ -23,6 +23,7 @@ import { ServicesModule } from './services/services.module';
 import { buildDatabaseOptions } from './database/database.config';
 import { DemoDataModule } from './demo/demo-data.module';
 import { ApiUsageModule } from './api-usage/api-usage.module';
+import { RedisCacheModule } from './cache/cache.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ApiUsageModule } from './api-usage/api-usage.module';
       isGlobal: true,
       envFilePath: ['.env', '.env.example'],
     }),
+    RedisCacheModule,
     TypeOrmModule.forRoot(buildDatabaseOptions()),
     UsersModule,
     AuthModule,

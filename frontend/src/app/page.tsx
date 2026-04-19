@@ -876,6 +876,11 @@ export default function Home() {
           massWandActive={drawMode === "mass_magic_wand"}
           onProcessingStateChange={setIsProcessingWand}
           onNotification={showNotification}
+          drawMode={drawMode}
+          currentUserRole={currentUserRole}
+          isProcessingWand={isProcessingWand}
+          measurement={measurement}
+          onSavePlot={handleSaveNewPlot}
         />
       </div>
 
