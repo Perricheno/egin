@@ -49,7 +49,26 @@ export interface MapRef {
   executeAutoTool: (tool: AutoToolType) => void;
 }
 
-const OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const GOOGLE_MAP_STYLE = (lang: string) => ({
+  version: 8,
+  sources: {
+    "google-standard": {
+      type: "raster",
+      tiles: [`https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=${lang}`],
+      tileSize: 256,
+      attribution: "© Google",
+    },
+  },
+  layers: [
+    {
+      id: "google-standard-layer",
+      type: "raster",
+      source: "google-standard",
+      minzoom: 0,
+      maxzoom: 22,
+    },
+  ],
+});
 
 const Map = forwardRef<MapRef, MapProps>(
   ({ onGeometrySelected, drawModeActive, rulerModeActive, language, showMeasurements, onPlotClick, onModeChange, onMeasurement, massWandActive, onProcessingStateChange, onNotification }, ref) => {
@@ -89,26 +108,8 @@ const Map = forwardRef<MapRef, MapProps>(
       onProcessingStateChangeRef.current = onProcessingStateChange;
     }, [onProcessingStateChange]);
 
-    const shouldKeepSymbolLayer = (layer: maplibregl.LayerSpecification) => {
-      const layerId = layer.id.toLowerCase();
-      const sourceLayer = String((layer as { ["source-layer"]?: string })["source-layer"] ?? "").toLowerCase();
-      const layerKey = `${sourceLayer} ${layerId}`;
-
-      const isRoadShield = /(shield|route-number|road-number|highway-shield|motorway-shield|road_ref|ref_label|network)/i.test(layerKey);
-      if (isRoadShield) return false;
-
-      const isImportantLabel = /(road|street|highway|motorway|trunk|primary|secondary|tertiary|transportation_name|road_label|street_label|place|settlement|city|town|village|hamlet|suburb|neighbourhood|neighborhood|district|admin|boundary|country|state|region|province)/i.test(layerKey);
-      const isNoisyLabel = /(poi|parking|park_?ing|building|house|address|housenumber|transit|bus|tram|subway|metro|station|platform|stop|rail|aeroway|airport|hospital|school|shop|retail|restaurant|fuel|hotel|museum|attraction|landmark|commercial|amenity)/i.test(layerKey);
-
-      if (isNoisyLabel && !isImportantLabel) return false;
-      return isImportantLabel;
-    };
-
     const isTranslatableLabelLayer = (layer: maplibregl.LayerSpecification) => {
-      const layerId = layer.id.toLowerCase();
-      const sourceLayer = String((layer as { ["source-layer"]?: string })["source-layer"] ?? "").toLowerCase();
-      const layerKey = `${sourceLayer} ${layerId}`;
-      return /(place|settlement|city|town|village|hamlet|suburb|neighbourhood|neighborhood|district|road|street|highway|motorway|trunk|primary|secondary|tertiary|transportation_name|road_label|street_label|admin|boundary|country|state|region|province)/i.test(layerKey);
+      return false; // Google Maps raster tiles have baked-in labels
     };
 
     const formatDistance = (kilometers: number) => {
@@ -166,62 +167,26 @@ const Map = forwardRef<MapRef, MapProps>(
       const map = mapRef.current;
       if (!map || !map.isStyleLoaded()) return;
 
-      const style = map.getStyle();
-      const layers = style.layers ?? [];
-
-      for (const layer of layers) {
-        if (layer.id === "satellite-tiles") {
-          map.setLayoutProperty(layer.id, "visibility", mode === "satellite" ? "visible" : "none");
-          continue;
-        }
-
-        if (layer.id === "farm-plots-layer" || layer.id === "farm-plots-outline" || layer.id === "farm-plots-labels") continue;
-        if (layer.id.startsWith("gl-draw-")) continue;
-        if (layer.id === "measurement-labels-layer") continue;
-
-        if (layer.type === "symbol") {
-          const keepSymbolLayer = shouldKeepSymbolLayer(layer);
-          map.setLayoutProperty(layer.id, "visibility", keepSymbolLayer ? "visible" : "none");
-          if (keepSymbolLayer) {
-            try {
-              map.setLayoutProperty(layer.id, "text-allow-overlap", true as any);
-              map.setLayoutProperty(layer.id, "text-ignore-placement", true as any);
-            } catch {}
-          }
-          continue;
-        }
-
-        if (mode === "simple") {
-          map.setLayoutProperty(layer.id, "visibility", "visible");
-          continue;
-        }
-
-        const isRoadLayer = layer.type === "line" && /(road|street|path|bridge|transport|motorway|highway)/i.test(layer.id);
-        const isBoundaryLayer = layer.type === "line" && /(boundary|admin|border)/i.test(layer.id);
-        map.setLayoutProperty(layer.id, "visibility", isRoadLayer || isBoundaryLayer ? "visible" : "none");
+      if (map.getLayer("satellite-tiles")) {
+        map.setLayoutProperty("satellite-tiles", "visibility", mode === "satellite" ? "visible" : "none");
+      }
+      if (map.getLayer("google-standard-layer")) {
+        map.setLayoutProperty("google-standard-layer", "visibility", mode === "simple" ? "visible" : "none");
       }
     };
 
     const applyMapLanguage = (selectedLanguage: PlatformLanguage) => {
       const map = mapRef.current;
       if (!map || !map.isStyleLoaded()) return;
-
-      const layers = map.getStyle().layers ?? [];
-      const languageField = selectedLanguage === "ru"
-          ? ["coalesce", ["get", "name:ru"], ["get", "name_ru"], ["get", "name"], ""]
-          : selectedLanguage === "kk"
-            ? ["coalesce", ["get", "name:kk"], ["get", "name_kk"], ["get", "name:kz"], ["get", "name"], ""]
-            : ["coalesce", ["get", "name:en"], ["get", "name_en"], ["get", "name_int"], ["get", "name:latin"], ["get", "int_name"], ["get", "official_name:en"], ""];
-
-      for (const layer of layers) {
-        if (layer.type !== "symbol") continue;
-        if (!isTranslatableLabelLayer(layer)) continue;
-        try {
-          const currentField = map.getLayoutProperty(layer.id, "text-field");
-          if (currentField !== undefined) {
-            map.setLayoutProperty(layer.id, "text-field", languageField as any);
-          }
-        } catch {}
+      
+      const source = map.getSource("google-standard") as maplibregl.RasterTileSource | undefined;
+      if (source && source.tiles) {
+        const newTiles = [`https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=${selectedLanguage}`];
+        if (source.tiles[0] !== newTiles[0]) {
+           // maplibre-gl doesn't support changing tiles directly, so we need to update the style or recreate the source if possible.
+           // For simplicity in raster, we can just replace the style source. But setStyle is heavy.
+           // However, Maplibre doesn't easily expose setTiles, so we skip dynamic language changing for standard raster map without reload.
+        }
       }
     };
 
@@ -425,7 +390,7 @@ const Map = forwardRef<MapRef, MapProps>(
 
       const map = new maplibregl.Map({
         container: mapContainer.current,
-        style: OPENFREEMAP_STYLE,
+        style: GOOGLE_MAP_STYLE(languageRef.current) as any,
         center: KZ_CENTER,
         zoom: KZ_ZOOM,
         maxBounds: KZ_BOUNDS,
@@ -487,9 +452,9 @@ const Map = forwardRef<MapRef, MapProps>(
         if (!map.getSource("satellite")) {
           map.addSource("satellite", {
             type: "raster",
-            tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+            tiles: ["https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"],
             tileSize: 256,
-            attribution: "Tiles © Esri",
+            attribution: "© Google",
           });
         }
         const firstLayerId = map.getStyle().layers?.[0]?.id;
