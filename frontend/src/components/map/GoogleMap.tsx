@@ -103,10 +103,10 @@ const GoogleMapComponent = forwardRef<MapRef, GoogleMapProps>(
           <Map
             defaultCenter={{ lat: KZ_CENTER[1], lng: KZ_CENTER[0] }}
             defaultZoom={KZ_ZOOM}
-            mapId={"bf19558667822d69"} // Пример Map ID для векторных карт
+            mapId={"bf19558667822d69"}
             disableDefaultUI={true}
-            onLoad={(map) => { mapRef.current = map; }}
-            mapTypeId={"satellite"} // По умолчанию агрономы любят спутник
+            onTilesLoaded={(ev) => { if (!mapRef.current) mapRef.current = ev.map; }}
+            mapTypeId={"satellite"}
           >
             {plots.map((plot) => {
               const geom = typeof plot.geometry === "string" ? JSON.parse(plot.geometry) : plot.geometry;
