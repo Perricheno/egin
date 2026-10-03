@@ -1,0 +1,8 @@
+.git
+node_modules
+apps/web
+.runtime
+.env*
+uploads
+artifacts
+data/downloads

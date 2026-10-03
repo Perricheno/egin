@@ -1,0 +1,15 @@
+# Local crop suitability demonstration
+
+Model: `ExtraTreesClassifier`, 96 trees, depth 10, minimum leaf 6, fixed seed 42, one CPU thread. `scripts/train_models.py` generates 3,900 samples for wheat, barley, sunflower, maize, lentil and flax; uses a stratified 75/25 split; saves a compressed joblib artifact and full metadata. The runtime loads the artifact once and performs real `predict_proba` inference. Global feature importance comes from the trained ensemble; no SHAP claim is made.
+
+**Dataset classification: DEMO_SYNTHETIC.** Exact means and standard deviations are explicit engineering assumptions. Their purpose is to demonstrate an end-to-end train/validate/save/load/infer pipeline. They are not observations from Kazakhstan and have not been validated against yield, field trials, varieties or local agronomic labels. Holdout metrics measure reconstruction of synthetic profiles only. Class scores are not calibrated crop-success probabilities and must not be used as predicted yields.
+
+Inputs: pH, mean growing-season temperature (°C), growing-season precipitation (mm), clay (%), organic carbon (g/kg). At runtime, temperature and precipitation come from NASA POWER's monthly series over May–August, averaged across three complete years. Soil comes from the top 0–30 cm SoilGrids prediction (thickness-weighted) or the corresponding OpenLandMap profile. Missing features prevent crop inference; the application does not substitute synthetic weather or soil.
+
+Background reading: [FAO crop water needs](https://www.fao.org/4/s2022e/s2022e02.htm), [FAO wheat physiology](https://www.fao.org/4/y4011e/y4011e06.htm), [FAO EcoCrop wheat](https://ecocrop.apps.fao.org/ecocrop/srv/en/cropView?id=2114). These sources explain the relevance of temperature, water and soils, but **do not supply the synthetic training labels or validate the exact generator distributions**. Crop water needs are not interchangeable with seasonal rainfall. The model omits irrigation, soil-water storage, sowing date, crop rotation, cultivar, pests and management.
+
+Metadata in `artifacts/model-metadata.json` records timestamp, version, features, train/validation counts, exact distributions, seed, sources, metrics, confusion matrix, importance, sklearn version and artifact SHA256. Generated data is CC0-1.0; external references retain their own terms. Retrain with `pnpm ml:train`, then restart API to load the replacement artifact. Trusted locally generated joblib artifacts only; never load user-uploaded pickles.
+
+Weather risk checks are separately labeled rules for forecast frost, heat, wind and heavy precipitation. They are not a second ML model and do not establish absence of agronomic risks.
+
+TerraMind (Apache-2.0) and TerraTorch (Apache-2.0) were evaluated as future imagery adapters. No satellite dataset, GPU or foundation-model weights are downloaded by the MVP. A meaningful next ML milestone is a licensed, regionally representative field-label dataset with spatial/temporal validation and agronomist review, before any claim of real recommendation accuracy.

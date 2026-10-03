@@ -1,0 +1,49 @@
+name: egin-local-mvp
+services:
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-egin}
+      POSTGRES_USER: ${POSTGRES_USER:-egin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run pnpm dev:all first}
+    ports:
+      - "127.0.0.1:${DB_PORT:-55432}:5432"
+    volumes:
+      - egin_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U egin -d egin"]
+      interval: 3s
+      timeout: 3s
+      retries: 25
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-egin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-egin}
+      SESSION_SECRET: ${SESSION_SECRET}
+      WEB_ORIGIN: http://localhost:${WEB_PORT:-3000}
+      API_ORIGIN: http://localhost:${API_PORT:-8000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      PYTHONPATH: /workspace/apps/api
+      OMP_NUM_THREADS: 1
+      OPENBLAS_NUM_THREADS: 1
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    volumes:
+      - ./apps/api:/workspace/apps/api
+      - ./packages:/workspace/packages
+      - ./scripts:/workspace/scripts
+      - ./artifacts:/workspace/artifacts
+      - ./data:/workspace/data
+      - ./uploads:/workspace/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "python -m app.bootstrap init && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+volumes:
+  egin_data:

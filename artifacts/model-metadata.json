@@ -1,0 +1,195 @@
+{
+  "model_version": "egin-extra-trees-demo-v1",
+  "model": "ExtraTreesClassifier",
+  "dataset_kind": "DEMO_SYNTHETIC",
+  "trained_at": "2026-10-03T15:41:16.607985+00:00",
+  "features": [
+    "ph",
+    "growing_temperature",
+    "growing_precipitation",
+    "clay",
+    "soc"
+  ],
+  "training_samples": 2925,
+  "validation_samples": 975,
+  "sample_size": 3900,
+  "random_seed": 42,
+  "dataset_source": "EGIN synthetic generator, scripts/train_models.py; no Kazakhstan field labels",
+  "dataset_license": "CC0-1.0 (generated data only)",
+  "source_urls": [
+    "https://www.fao.org/4/s2022e/s2022e02.htm",
+    "https://www.fao.org/4/y4011e/y4011e06.htm",
+    "https://ecocrop.apps.fao.org/ecocrop/srv/en/cropView?id=2114"
+  ],
+  "assumptions": {
+    "wheat": [
+      [
+        6.6,
+        18,
+        360,
+        25,
+        20
+      ],
+      [
+        0.7,
+        3.8,
+        120,
+        10,
+        10
+      ]
+    ],
+    "barley": [
+      [
+        7.1,
+        16,
+        280,
+        23,
+        17
+      ],
+      [
+        0.8,
+        3.5,
+        100,
+        10,
+        9
+      ]
+    ],
+    "sunflower": [
+      [
+        6.8,
+        22,
+        430,
+        28,
+        20
+      ],
+      [
+        0.7,
+        3.5,
+        130,
+        11,
+        10
+      ]
+    ],
+    "maize": [
+      [
+        6.5,
+        25,
+        640,
+        30,
+        24
+      ],
+      [
+        0.6,
+        3.2,
+        150,
+        10,
+        10
+      ]
+    ],
+    "lentil": [
+      [
+        6.9,
+        18,
+        320,
+        20,
+        17
+      ],
+      [
+        0.65,
+        3.3,
+        100,
+        9,
+        8
+      ]
+    ],
+    "flax": [
+      [
+        6.4,
+        17,
+        420,
+        28,
+        25
+      ],
+      [
+        0.6,
+        3.0,
+        110,
+        10,
+        10
+      ]
+    ]
+  },
+  "processing": "Seeded normal distributions, clipping, stratified 75/25 split; no imputation at inference.",
+  "metrics": {
+    "synthetic_holdout_balanced_accuracy": 0.4911,
+    "synthetic_holdout_macro_f1": 0.4633
+  },
+  "classes": [
+    "barley",
+    "flax",
+    "lentil",
+    "maize",
+    "sunflower",
+    "wheat"
+  ],
+  "confusion_matrix": [
+    [
+      95,
+      17,
+      33,
+      0,
+      8,
+      9
+    ],
+    [
+      12,
+      99,
+      19,
+      9,
+      15,
+      8
+    ],
+    [
+      44,
+      17,
+      64,
+      1,
+      30,
+      7
+    ],
+    [
+      0,
+      4,
+      2,
+      144,
+      12,
+      1
+    ],
+    [
+      13,
+      28,
+      18,
+      39,
+      61,
+      4
+    ],
+    [
+      26,
+      40,
+      41,
+      11,
+      28,
+      16
+    ]
+  ],
+  "feature_importance": {
+    "ph": 0.0946913314712778,
+    "growing_temperature": 0.35465989286057664,
+    "growing_precipitation": 0.3956640044376519,
+    "clay": 0.07400657544464607,
+    "soc": 0.08097819578584761
+  },
+  "sklearn_version": "1.9.1",
+  "warning": "Демонстрационная ML-модель. Метрики синтетической выборки не доказывают агрономическую точность. Баллы — сходство с демо-профилями, не вероятность урожая.",
+  "artifact_sha256": "4bcf14fa4f0fb402270b70d4ba345e475d0fe1d61301b9e5182edee3ed21cdfc"
+}
